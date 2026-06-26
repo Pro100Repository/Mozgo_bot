@@ -1,0 +1,6 @@
+# Встановити одною командою в терміналі:
+# pip install -r requirements.txt
+
+aiogram==3.7.0
+aiosqlite==0.20.0
+python-dotenv==1.0.1
