@@ -1,4 +1,4 @@
-# handlers/games.py — предстоящие игры с фильтром по городу (кнопки) и результаты
+# handlers/games.py — предстоящие игры с фильтром по городу (кнопки), фото и результаты
 
 from aiogram import Router, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -35,6 +35,16 @@ def back_to_cities_keyboard():
     ]])
 
 
+def build_game_text(title, date, location, registration_link):
+    text = f"🎯 {escape_html(title)}\n"
+    text += f"📆 Дата: {escape_html(date)}\n"
+    if location:
+        text += f"📍 Место: {escape_html(location)}\n"
+    if registration_link:
+        text += f'📝 <a href="{registration_link}">Регистрация</a>\n'
+    return text
+
+
 # ─── ПРЕДСТОЯЩИЕ ИГРЫ ───────────────────
 
 @router.message(F.text == "📅 Предстоящие игры")
@@ -69,20 +79,32 @@ async def city_chosen(callback: CallbackQuery):
         await callback.answer()
         return
 
-    text = f"📅 Игры в городе «{city}»:\n\n"
-    for game in games:
-        title, date, location, registration_link = game
-        text += f"🎯 {escape_html(title)}\n"
-        text += f"📆 Дата: {escape_html(date)}\n"
-        if location:
-            text += f"📍 Место: {escape_html(location)}\n"
-        if registration_link:
-            text += f'📝 <a href="{registration_link}">Регистрация</a>\n'
-        text += "\n"
+    # Разделяем игры на те, у которых есть фото, и те, у которых нет
+    games_with_photo = [g for g in games if g[4]]   # photo_id на 5-й позиции
+    games_without_photo = [g for g in games if not g[4]]
 
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
+    # Сначала убираем старое сообщение со списком городов
+    await callback.message.delete()
+
+    # Игры без фото — одним текстовым сообщением
+    if games_without_photo:
+        text = f"📅 Игры в городе «{city}»:\n\n"
+        for title, date, location, registration_link, _ in games_without_photo:
+            text += build_game_text(title, date, location, registration_link) + "\n"
+        await callback.message.answer(text, parse_mode="HTML")
+
+    # Игры с фото — отдельным сообщением-фото на каждую игру
+    for title, date, location, registration_link, photo_id in games_with_photo:
+        caption = build_game_text(title, date, location, registration_link)
+        await callback.message.answer_photo(
+            photo=photo_id,
+            caption=caption,
+            parse_mode="HTML"
+        )
+
+    # Кнопка "Назад" отдельным сообщением в конце
+    await callback.message.answer(
+        "Хочешь посмотреть игры в другом городе?",
         reply_markup=back_to_cities_keyboard()
     )
     await callback.answer()

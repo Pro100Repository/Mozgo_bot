@@ -1,11 +1,11 @@
 # handlers/admin.py — админ-команды для управления ботом
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 
 from config import ADMIN_IDS
-from database.db import add_game, add_result, delete_game, get_upcoming_games
+from database.db import add_game, add_result, delete_game, get_upcoming_games, parse_game_datetime, set_game_photo
 
 router = Router()
 
@@ -16,9 +16,11 @@ def is_admin(user_id: int) -> bool:
 
 # ─────────────────────────────────────────
 # ДОБАВИТЬ ИГРУ
-# Формат: /add_game Название | Дата | Город | Место | Ссылка на регистрацию
+# Формат: /add_game Название | Дата | Время | Город | Место | Ссылка на регистрацию
+# Дата в формате ДД.MM.ГГГГ, время в формате ЧЧ:MM (24-часовой формат)
 # Город — ОБЯЗАТЕЛЬНОЕ поле (по нему пользователи ищут игры).
-# Пример: /add_game Квиз №5 | 20.06.2025 | Киев | Бар Burnout | https://forms.gle/xxxxx
+# Время нужно для автоматического удаления игры через 2 часа после начала.
+# Пример: /add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout | https://forms.gle/xxxxx
 # ─────────────────────────────────────────
 @router.message(Command("add_game"))
 async def cmd_add_game(message: Message):
@@ -31,46 +33,69 @@ async def cmd_add_game(message: Message):
     if not args:
         await message.answer(
             "📝 *Формат команды:*\n\n"
-            "`/add_game Название | Дата | Город | Место | Ссылка на регистрацию`\n\n"
+            "`/add_game Название | Дата | Время | Город | Место | Ссылка на регистрацию`\n\n"
+            "Дата — в формате ДД.MM.ГГГГ\n"
+            "Время — в формате ЧЧ:MM (24-часовой формат)\n"
             "Город — обязательное поле!\n\n"
             "*Пример:*\n"
-            "`/add_game Квиз №5 | 20.06.2025 | Киев | Бар Burnout | https://forms.gle/xxxxx`",
+            "`/add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout | https://forms.gle/xxxxx`\n\n"
+            "Игра автоматически исчезнет из списка через 2 часа после начала.",
             parse_mode="Markdown"
         )
         return
 
     parts = [p.strip() for p in args.split("|")]
 
-    if len(parts) < 3:
+    if len(parts) < 4:
         await message.answer(
-            "❌ Неверный формат. Нужно минимум: *Название | Дата | Город*\n\n"
-            "Город обязателен — по нему пользователи ищут игры.\n\n"
-            "Пример: `/add_game Квиз №5 | 20.06.2025 | Киев | Бар Burnout | https://forms.gle/xxxxx`",
+            "❌ Неверный формат. Нужно минимум: *Название | Дата | Время | Город*\n\n"
+            "Город обязателен — по нему пользователи ищут игры.\n"
+            "Время обязательно — по нему бот понимает, когда удалить игру.\n\n"
+            "Пример: `/add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout`",
             parse_mode="Markdown"
         )
         return
 
     title = parts[0]
     date  = parts[1]
-    city  = parts[2]
+    time_str = parts[2]
+    city  = parts[3]
 
     if not city:
-        await message.answer("❌ Город не может быть пустым. Укажи название города на 3-й позиции.")
+        await message.answer("❌ Город не может быть пустым. Укажи название города на 4-й позиции.")
         return
 
-    location           = parts[3] if len(parts) > 3 else ""
-    registration_link  = parts[4] if len(parts) > 4 else ""
+    event_datetime = parse_game_datetime(date, time_str)
+    if event_datetime is None:
+        await message.answer(
+            "❌ Не удалось распознать дату или время.\n\n"
+            "Дата должна быть в формате ДД.MM.ГГГГ (например 20.06.2026)\n"
+            "Время должно быть в формате ЧЧ:MM (например 19:00)"
+        )
+        return
 
-    await add_game(title, date, location, registration_link=registration_link, city=city)
+    location           = parts[4] if len(parts) > 4 else ""
+    registration_link  = parts[5] if len(parts) > 5 else ""
+
+    # В поле "date" сохраняем дату+время вместе для красивого отображения
+    display_date = f"{date} {time_str}"
+
+    await add_game(
+        title, display_date, location,
+        registration_link=registration_link,
+        city=city,
+        event_datetime=event_datetime
+    )
 
     reg_status = registration_link if registration_link else "—"
     await message.answer(
         f"✅ Игра добавлена!\n\n"
         f"🎯 Название: {title}\n"
-        f"📆 Дата: {date}\n"
+        f"📆 Дата и время: {display_date}\n"
         f"🏙 Город: {city}\n"
         f"📍 Место: {location or '—'}\n"
-        f"📝 Регистрация: {reg_status}"
+        f"📝 Регистрация: {reg_status}\n\n"
+        f"ℹ️ Игра автоматически исчезнет из списка через 2 часа после начала."
     )
 
 
@@ -120,11 +145,65 @@ async def cmd_list_games(message: Message):
 
     text = "📋 *Список игр (для админа):*\n\n"
     for game in games:
-        game_id, title, date, location, registration_link, max_players, city = game
+        game_id, title, date, location, registration_link, max_players, city = game[:7]
         text += f"ID: `{game_id}` — *{title}* ({date}, {city})\n"
 
     text += "\nЧтобы удалить: `/del_game ID`"
     await message.answer(text, parse_mode="Markdown")
+
+
+# ─────────────────────────────────────────
+# ДОБАВИТЬ ФОТО К ИГРЕ
+# Способ: отправь фото в бот с подписью "/add_photo ID"
+# ID игры узнать через /list_games
+# ─────────────────────────────────────────
+@router.message(F.photo, F.caption.regexp(r"^/add_photo"))
+async def cmd_add_photo_with_image(message: Message):
+    """Срабатывает когда фото отправлено с подписью /add_photo ID"""
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ У вас нет прав для этой команды.")
+        return
+
+    args = message.caption.replace("/add_photo", "").strip()
+
+    if not args or not args.isdigit():
+        await message.answer(
+            "❌ Не указан ID игры в подписи.\n\n"
+            "Подпись к фото должна быть: `/add_photo ID`\n"
+            "Пример: `/add_photo 3`",
+            parse_mode="Markdown"
+        )
+        return
+
+    game_id = int(args)
+
+    # Берём file_id самого крупного варианта фото (последний в списке)
+    photo_id = message.photo[-1].file_id
+
+    success = await set_game_photo(game_id, photo_id)
+
+    if success:
+        await message.answer(f"✅ Фото прикреплено к игре с ID {game_id}.")
+    else:
+        await message.answer(f"❌ Игра с ID {game_id} не найдена.")
+
+
+@router.message(Command("add_photo"))
+async def cmd_add_photo_no_image(message: Message):
+    """Срабатывает если написали команду без фото (текстом) — подсказываем как правильно"""
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ У вас нет прав для этой команды.")
+        return
+
+    await message.answer(
+        "📷 *Как прикрепить фото к игре:*\n\n"
+        "1. Узнай ID игры через `/list_games`\n"
+        "2. Отправь ФОТО в этот чат, а в подписи к фото напиши:\n"
+        "`/add_photo ID`\n\n"
+        "*Пример:* отправь картинку с подписью `/add_photo 3`\n\n"
+        "⚠️ Команду нужно написать в подписи к фото, а не отдельным сообщением.",
+        parse_mode="Markdown"
+    )
 
 
 # ─────────────────────────────────────────
@@ -195,9 +274,10 @@ async def cmd_admin_help(message: Message):
     await message.answer(
         "🔧 *Админ-команды:*\n\n"
         "📅 *Игры:*\n"
-        "`/add_game Название | Дата | Город | Место | Ссылка на регистрацию`\n"
+        "`/add_game Название | Дата | Время | Город | Место | Ссылка на регистрацию`\n"
         "`/list_games` — список игр с ID\n"
-        "`/del_game ID` — удалить игру\n\n"
+        "`/del_game ID` — удалить игру\n"
+        "📷 Фото к игре: отправь картинку с подписью `/add_photo ID`\n\n"
         "🏆 *Результаты:*\n"
         "`/add_result Игра | Дата | Команда | Место | Баллы`",
         parse_mode="Markdown"

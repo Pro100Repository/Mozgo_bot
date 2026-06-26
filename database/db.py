@@ -1,6 +1,7 @@
 # database/db.py — робота з базою даних SQLite
 
 import aiosqlite
+from datetime import datetime, timedelta
 from config import DATABASE_NAME
 
 
@@ -14,10 +15,12 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
                 date TEXT NOT NULL,
+                event_datetime TEXT,
                 location TEXT,
                 registration_link TEXT DEFAULT '',
                 max_players INTEGER DEFAULT 0,
-                city TEXT DEFAULT ''
+                city TEXT DEFAULT '',
+                photo_id TEXT DEFAULT ''
             )
         """)
 
@@ -53,6 +56,16 @@ async def migrate_db():
             await db.commit()
             print("✅ Миграция: добавлено поле registration_link")
 
+        if "event_datetime" not in columns:
+            await db.execute("ALTER TABLE games ADD COLUMN event_datetime TEXT")
+            await db.commit()
+            print("✅ Миграция: добавлено поле event_datetime")
+
+        if "photo_id" not in columns:
+            await db.execute("ALTER TABLE games ADD COLUMN photo_id TEXT DEFAULT ''")
+            await db.commit()
+            print("✅ Миграция: добавлено поле photo_id")
+
 
 # ─── ІГРИ ───────────────────────────────
 
@@ -75,13 +88,65 @@ async def get_game_by_id(game_id: int):
             return await cursor.fetchone()
 
 
-async def add_game(title, date, location, registration_link="", max_players=0, city=""):
+async def add_game(title, date, location, registration_link="", max_players=0, city="", event_datetime=None, photo_id=""):
+    """
+    event_datetime — дата и время начала игры в формате ISO ("2026-06-25 20:00"),
+    нужно для автоматического удаления завершившихся игр.
+    Если не передано — берётся как None (игра не будет удаляться автоматически).
+    photo_id — file_id фотографии в Telegram (не сама картинка, а её идентификатор).
+    """
     async with aiosqlite.connect(DATABASE_NAME) as db:
         await db.execute(
-            "INSERT INTO games (title, date, location, registration_link, max_players, city) VALUES (?, ?, ?, ?, ?, ?)",
-            (title, date, location, registration_link, max_players, city)
+            "INSERT INTO games (title, date, location, registration_link, max_players, city, event_datetime, photo_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (title, date, location, registration_link, max_players, city, event_datetime, photo_id)
         )
         await db.commit()
+
+
+def parse_game_datetime(date_str: str, time_str: str):
+    """
+    Преобразует дату (ДД.MM.ГГГГ) и время (ЧЧ:MM) в строку ISO для хранения в БД.
+    Возвращает None если формат не распознан.
+    """
+    try:
+        dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+
+
+async def cleanup_finished_games(hours_after_start: int = 2):
+    """
+    Удаляет игры, начало которых было больше чем hours_after_start часов назад.
+    Игры без указанного event_datetime не трогает (чтобы не удалить случайно).
+    """
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT id, event_datetime FROM games WHERE event_datetime IS NOT NULL AND event_datetime != ''"
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        now = datetime.now()
+        ids_to_delete = []
+
+        for game_id, event_datetime in rows:
+            try:
+                game_dt = datetime.strptime(event_datetime, "%Y-%m-%d %H:%M")
+            except (ValueError, TypeError):
+                continue  # пропускаем некорректные значения
+
+            if now >= game_dt + timedelta(hours=hours_after_start):
+                ids_to_delete.append(game_id)
+
+        if ids_to_delete:
+            await db.executemany(
+                "DELETE FROM games WHERE id = ?",
+                [(gid,) for gid in ids_to_delete]
+            )
+            await db.commit()
+
+        return len(ids_to_delete)
 
 
 async def get_cities():
@@ -95,18 +160,44 @@ async def get_cities():
 
 
 async def get_games_by_city(city: str):
-    """Повертає ігри в конкретному місті"""
+    """Повертає ігри в конкретному місті (тільки ті, що ще не завершились)"""
     async with aiosqlite.connect(DATABASE_NAME) as db:
         async with db.execute(
-            "SELECT title, date, location, registration_link FROM games WHERE LOWER(city) = LOWER(?) ORDER BY date",
+            "SELECT title, date, location, registration_link, event_datetime, photo_id "
+            "FROM games WHERE LOWER(city) = LOWER(?) ORDER BY date",
             (city,)
         ) as cursor:
-            return await cursor.fetchall()
+            rows = await cursor.fetchall()
+
+    now = datetime.now()
+    result = []
+    for title, date, location, registration_link, event_datetime, photo_id in rows:
+        if event_datetime:
+            try:
+                game_dt = datetime.strptime(event_datetime, "%Y-%m-%d %H:%M")
+                if now >= game_dt + timedelta(hours=2):
+                    continue  # игра уже закончилась — не показываем
+            except (ValueError, TypeError):
+                pass
+        result.append((title, date, location, registration_link, photo_id))
+
+    return result
 
 
 async def delete_game(game_id: int) -> bool:
     async with aiosqlite.connect(DATABASE_NAME) as db:
         cursor = await db.execute("DELETE FROM games WHERE id = ?", (game_id,))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def set_game_photo(game_id: int, photo_id: str) -> bool:
+    """Прикрепляет фото к игре по её ID. Возвращает True если игра найдена."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            "UPDATE games SET photo_id = ? WHERE id = ?",
+            (photo_id, game_id)
+        )
         await db.commit()
         return cursor.rowcount > 0
 
