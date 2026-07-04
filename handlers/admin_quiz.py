@@ -196,19 +196,23 @@ async def aq_options_entered(message: Message, state: FSMContext):
         option_c=lines[2], option_d=lines[3]
     )
 
+    labels = ["A", "B", "C", "D"]
+    options = [lines[0], lines[1], lines[2], lines[3]]
+    buttons = [
+        [InlineKeyboardButton(text=f"{lbl}. {opt}", callback_data=f"aq_correct_{lbl}")]
+        for lbl, opt in zip(labels, options) if opt
+    ]
+
     await message.answer(
-        "✅ Шаг 6. Напиши *правильный ответ* — точно так, как написан в вариантах:\n\n"
-        f"A: {lines[0]}\n"
-        f"B: {lines[1]}\n"
-        f"C: {lines[2] or '—'}\n"
-        f"D: {lines[3] or '—'}",
-        parse_mode="Markdown"
+        "✅ Шаг 6. Выбери правильный вариант:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(AddQuestionForm.enter_correct)
 
 
 @router.message(AddQuestionForm.enter_correct)
 async def aq_correct_entered(message: Message, state: FSMContext):
+    """Тільки для відкритих питань — тут варіантів немає, тому текст вводиться вручну"""
     correct = message.text.strip()
     await state.update_data(correct=correct)
     data = await state.get_data()
@@ -232,6 +236,42 @@ async def aq_correct_entered(message: Message, state: FSMContext):
         f"✅ Вопрос добавлен в категорию *{data['category']}*!",
         parse_mode="Markdown"
     )
+
+
+@router.callback_query(AddQuestionForm.enter_correct, F.data.startswith("aq_correct_"))
+async def aq_correct_chosen(callback: CallbackQuery, state: FSMContext):
+    """Для закритих питань — правильна відповідь обирається кнопкою,
+    текст береться напряму зі збереженого варіанту (без ризику розбіжностей)"""
+    label = callback.data.replace("aq_correct_", "")
+
+    data = await state.get_data()
+    option_map = {
+        "A": data.get("option_a", ""),
+        "B": data.get("option_b", ""),
+        "C": data.get("option_c", ""),
+        "D": data.get("option_d", ""),
+    }
+    correct = option_map.get(label, "")
+
+    await add_question(
+        category   = data["category"],
+        q_type     = data["q_type"],
+        question   = data["question"],
+        correct    = correct,
+        option_a   = data.get("option_a", ""),
+        option_b   = data.get("option_b", ""),
+        option_c   = data.get("option_c", ""),
+        option_d   = data.get("option_d", ""),
+        media_id   = data.get("media_id", ""),
+        media_type = data.get("media_type", ""),
+    )
+    await state.clear()
+
+    await callback.message.edit_text(
+        f"✅ Вопрос добавлен в категорию *{data['category']}*!",
+        parse_mode="Markdown"
+    )
+    await callback.answer()
 
 
 # ─── СПИСОК ПИТАНЬ ────────────────────────────────────────────────────────────

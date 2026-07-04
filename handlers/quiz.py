@@ -1,6 +1,5 @@
 # handlers/quiz.py — квіз "Попробуй свои силы"
 
-import random
 from aiogram import Router, F
 from aiogram.types import (
     Message, CallbackQuery,
@@ -92,31 +91,26 @@ async def send_question(message_or_callback, state: FSMContext, edit: bool = Fal
     # Варіанти для закритих питань
     options = [o for o in [opt_a, opt_b, opt_c, opt_d] if o]
 
-    # Перемішуємо варіанти + відстежуємо правильну букву
+    # Зберігаємо мапу "буква -> текст варіанта" (порядок відповідає кнопкам)
+    # та сирий текст правильної відповіді. Порівняння з обраним варіантом
+    # відбувається за ТЕКСТОМ (див. quiz_answer_chosen), а не за буквою,
+    # щоб не залежати від того, як саме адмін заповнив поле "correct".
     if not is_open and options:
         labels = ["A", "B", "C", "D"]
-        paired = list(zip(labels, options))
-        # Знаходимо яка буква зараз правильна
-        correct_text = correct.strip().lower()
-        # Знаходимо текст правильної відповіді
-        correct_option_text = None
-        for lbl, txt in paired:
-            if txt.strip().lower() == correct_text or lbl.lower() == correct_text:
-                correct_option_text = txt
-                break
-        if correct_option_text is None:
-            correct_option_text = correct
+        options_map = {lbl: txt for lbl, txt in zip(labels, options)}
 
-        random.shuffle(paired)
-        # Знаходимо нову букву правильної відповіді після перемішування
-        new_correct_label = "A"
-        for lbl, txt in paired:
-            if txt == correct_option_text:
-                new_correct_label = lbl
-                break
-        options = [txt for _, txt in paired]
-        await state.update_data(current_correct_label=new_correct_label,
-                                current_correct_text=correct_option_text)
+        def _normalize(s: str) -> str:
+            return " ".join(s.strip().lower().split())
+
+        correct_variants = [_normalize(v) for v in correct.split("|")]
+        if not any(_normalize(txt) in correct_variants for txt in options_map.values()):
+            # Правильна відповідь з БД не збігається за текстом з жодним
+            # видимим варіантом — ознака биття даних у цьому питанні.
+            print(f"⚠️ QUIZ: правильна відповідь не знайдена серед варіантів "
+                  f"для питання id={q_id}. correct='{correct}', options={options}")
+
+        await state.update_data(current_options_map=options_map,
+                                current_correct_text=correct.strip())
     else:
         await state.update_data(current_correct_text=correct.strip())
 
@@ -243,19 +237,36 @@ async def quiz_answer_chosen(callback: CallbackQuery, state: FSMContext):
     _, _, q_id_str, chosen_label = callback.data.split("_", 3)
 
     data = await state.get_data()
-    correct_label = data.get("current_correct_label", "")
-    correct_text  = data.get("current_correct_text", "")
+    options_map  = data.get("current_options_map", {})
+    correct_text = data.get("current_correct_text", "")
     index   = data["index"]
     correct = data["correct"]
 
-    is_correct = chosen_label.upper() == correct_label.upper()
+    chosen_text = options_map.get(chosen_label.upper(), "")
+
+    def normalize(s: str) -> str:
+        return " ".join(s.strip().lower().split())
+
+    # Допускаємо кілька правильних варіантів через "|" в полі correct
+    correct_variants = [normalize(v) for v in correct_text.split("|")]
+    is_correct = normalize(chosen_text) in correct_variants
+
+    # Для показу як основну беремо першу відповідь (до "|"),
+    # або, якщо вона не збігається з жодним варіантом кнопок,
+    # шукаємо текст кнопки, що відповідає правильній відповіді
+    main_correct = correct_text.split("|")[0].strip()
+    displayed_correct = main_correct
+    for txt in options_map.values():
+        if normalize(txt) in correct_variants:
+            displayed_correct = txt
+            break
 
     if is_correct:
         await callback.message.answer(f"✅ Правильно! 🎉")
         correct += 1
     else:
         await callback.message.answer(
-            f"❌ Неправильно.\nПравильный ответ: *{correct_text}*",
+            f"❌ Неправильно.\nПравильный ответ: *{displayed_correct}*",
             parse_mode="Markdown"
         )
 
