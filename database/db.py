@@ -39,6 +39,41 @@ async def init_db():
         await db.commit()
         print("✅ База даних готова")
 
+        # ─── КВІЗ ────────────────────────────────
+
+        # Таблиця питань
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS questions (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                category    TEXT NOT NULL,
+                q_type      TEXT NOT NULL DEFAULT 'text',
+                question    TEXT NOT NULL,
+                option_a    TEXT,
+                option_b    TEXT,
+                option_c    TEXT,
+                option_d    TEXT,
+                correct     TEXT NOT NULL,
+                media_id    TEXT DEFAULT '',
+                media_type  TEXT DEFAULT ''
+            )
+        """)
+
+        # Таблиця результатів квізу
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS quiz_results (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL,
+                username    TEXT,
+                category    TEXT NOT NULL,
+                correct     INTEGER DEFAULT 0,
+                total       INTEGER DEFAULT 0,
+                played_at   TEXT DEFAULT (datetime('now'))
+            )
+        """)
+
+        await db.commit()
+        print("✅ Таблиці квізу готові")
+
 
 async def migrate_db():
     """Додає нові колонки якщо вони ще не існують (міграція)"""
@@ -279,3 +314,92 @@ async def get_records():
             most_games = await cursor.fetchall()
 
         return top_scores, most_wins, most_games
+
+
+# ─── КВІЗ ────────────────────────────────
+
+CATEGORIES = ["Классика", "Туц Туц Quiz", "Квизмашина"]
+
+# Типи питань
+Q_TEXT  = "text"    # текст + 4 варіанти
+Q_OPEN  = "open"    # відкрита відповідь (без варіантів)
+Q_PHOTO = "photo"   # фото + варіанти або відкрита
+Q_AUDIO = "audio"   # аудіо + варіанти або відкрита
+Q_VIDEO = "video"   # відео + варіанти або відкрита
+
+
+async def add_question(category, q_type, question, correct,
+                       option_a="", option_b="", option_c="", option_d="",
+                       media_id="", media_type=""):
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("""
+            INSERT INTO questions
+                (category, q_type, question, option_a, option_b, option_c, option_d,
+                 correct, media_id, media_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (category, q_type, question,
+              option_a, option_b, option_c, option_d,
+              correct, media_id, media_type))
+        await db.commit()
+
+
+async def get_questions(category: str, limit: int = 10):
+    """Повертає випадкові limit питань з категорії"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("""
+            SELECT id, q_type, question, option_a, option_b, option_c, option_d,
+                   correct, media_id, media_type
+            FROM questions
+            WHERE category = ?
+            ORDER BY RANDOM()
+            LIMIT ?
+        """, (category, limit)) as cursor:
+            return await cursor.fetchall()
+
+
+async def count_questions(category: str) -> int:
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM questions WHERE category = ?", (category,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+async def delete_question(question_id: int) -> bool:
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute("DELETE FROM questions WHERE id = ?", (question_id,))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def list_questions(category: str):
+    """Список питань для адміна (ID + скорочений текст)"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("""
+            SELECT id, q_type, question, correct
+            FROM questions WHERE category = ?
+            ORDER BY id
+        """, (category,)) as cursor:
+            return await cursor.fetchall()
+
+
+async def save_quiz_result(user_id: int, username: str, category: str,
+                           correct: int, total: int):
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("""
+            INSERT INTO quiz_results (user_id, username, category, correct, total)
+            VALUES (?, ?, ?, ?, ?)
+        """, (user_id, username, category, correct, total))
+        await db.commit()
+
+
+async def get_user_quiz_stats(user_id: int, category: str):
+    """Найкращий результат користувача в категорії"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("""
+            SELECT MAX(correct), total, COUNT(*)
+            FROM quiz_results
+            WHERE user_id = ? AND category = ?
+        """, (user_id, category)) as cursor:
+            return await cursor.fetchone()
