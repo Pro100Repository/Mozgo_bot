@@ -403,3 +403,164 @@ async def get_user_quiz_stats(user_id: int, category: str):
             WHERE user_id = ? AND category = ?
         """, (user_id, category)) as cursor:
             return await cursor.fetchone()
+
+
+# ─── РЕЗУЛЬТАТИ ІГОР (НОВА СИСТЕМА) ──────────────────────────────────────────
+
+RESULT_CITIES    = ["Москва", "Красногорск", "Истра", "Обнинск"]
+RESULT_GAME_TYPES = {
+    "mozgoboynya": "Мозгобойня",
+    "kvizmashina": "Квизмашина",
+    "tuc_tuc":     "Туц Туц QUIZ",
+}
+# Групи для користувача
+RATING_GROUPS = {
+    "erudition": {"label": "🧠 Эрудиция", "types": ["mozgoboynya", "kvizmashina"]},
+    "tuc_tuc":   {"label": "🎵 Туц Туц QUIZ",  "types": ["tuc_tuc"]},
+}
+
+
+async def init_results_db():
+    """Створює таблицю результатів ігор"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS game_results (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                city          TEXT NOT NULL,
+                game_type     TEXT NOT NULL,
+                game_name     TEXT NOT NULL,
+                place1_team   TEXT DEFAULT '',
+                place1_photo  TEXT DEFAULT '',
+                place2_team   TEXT DEFAULT '',
+                place2_photo  TEXT DEFAULT '',
+                place3_team   TEXT DEFAULT '',
+                place3_photo  TEXT DEFAULT '',
+                created_at    TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        await db.commit()
+
+
+async def add_game_result(city, game_type, game_name,
+                          place1_team='', place1_photo='',
+                          place2_team='', place2_photo='',
+                          place3_team='', place3_photo=''):
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute("""
+            INSERT INTO game_results
+                (city, game_type, game_name,
+                 place1_team, place1_photo,
+                 place2_team, place2_photo,
+                 place3_team, place3_photo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (city, game_type, game_name,
+              place1_team, place1_photo,
+              place2_team, place2_photo,
+              place3_team, place3_photo))
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_game_result(result_id: int):
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT * FROM game_results WHERE id = ?", (result_id,)
+        ) as cursor:
+            return await cursor.fetchone()
+
+
+async def update_game_result(result_id: int, **fields):
+    """Оновлює довільні поля результату гри (для редагування)"""
+    if not fields:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [result_id]
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            f"UPDATE game_results SET {set_clause} WHERE id = ?", values
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def delete_game_result(result_id: int) -> bool:
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            "DELETE FROM game_results WHERE id = ?", (result_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def get_rating(city: str, group_key: str):
+    """
+    Повертає рейтинг команд для міста і групи типів ігор.
+    group_key: 'erudition' або 'tuc_tuc'
+    Повертає: список (team, wins1, wins2, wins3, total_games, photos)
+    """
+    types = RATING_GROUPS[group_key]["types"]
+    placeholders = ",".join("?" * len(types))
+
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        # Отримуємо всі результати
+        async with db.execute(f"""
+            SELECT place1_team, place1_photo,
+                   place2_team, place2_photo,
+                   place3_team, place3_photo
+            FROM game_results
+            WHERE city = ? AND game_type IN ({placeholders})
+        """, [city] + types) as cursor:
+            rows = await cursor.fetchall()
+
+    # Рахуємо статистику по кожній команді
+    from collections import defaultdict
+    teams = defaultdict(lambda: {"w1": 0, "w2": 0, "w3": 0, "photos": []})
+
+    total_games = len(rows)
+    for p1t, p1p, p2t, p2p, p3t, p3p in rows:
+        if p1t:
+            teams[p1t]["w1"] += 1
+            if p1p:
+                teams[p1t]["photos"].append(p1p)
+        if p2t:
+            teams[p2t]["w2"] += 1
+            if p2p:
+                teams[p2t]["photos"].append(p2p)
+        if p3t:
+            teams[p3t]["w3"] += 1
+            if p3p:
+                teams[p3t]["photos"].append(p3p)
+
+    # Сортуємо: спочатку за 1 місцями, потім за 2, потім за 3
+    sorted_teams = sorted(
+        teams.items(),
+        key=lambda x: (x[1]["w1"], x[1]["w2"], x[1]["w3"]),
+        reverse=True
+    )
+
+    return sorted_teams, total_games
+
+
+async def list_game_results(city: str = None, game_type: str = None, limit: int = 20):
+    """Список результатів для адміна"""
+    conditions = []
+    params = []
+    if city:
+        conditions.append("city = ?")
+        params.append(city)
+    if game_type:
+        conditions.append("game_type = ?")
+        params.append(game_type)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(f"""
+            SELECT id, city, game_type, game_name,
+                   place1_team, place2_team, place3_team, created_at
+            FROM game_results
+            {where}
+            ORDER BY id DESC
+            LIMIT ?
+        """, params + [limit]) as cursor:
+            return await cursor.fetchall()
