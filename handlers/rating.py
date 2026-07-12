@@ -2,36 +2,12 @@
 
 from aiogram import Router, F
 from aiogram.types import Message
-from database.db import get_top_teams, get_records
+from database.db import get_records
 
 router = Router()
 
-
-@router.message(F.text == "🏅 Рейтинг команд")
-async def show_rating(message: Message):
-    teams = await get_top_teams(limit=10)
-
-    if not teams:
-        await message.answer(
-            "📭 Рейтинг пока пустой.\n"
-            "Он сформируется после первых игр!"
-        )
-        return
-
-    text = "🏅 *Рейтинг команд:*\n\n"
-    text += "Очки: 🥇=3 | 🥈=2 | 🥉=1\n"
-    text += "━━━━━━━━━━━━━━━━━━\n\n"
-
-    position_icons = ["🥇", "🥈", "🥉"]
-
-    for i, team in enumerate(teams):
-        team_name, games_played, points, gold, silver, bronze, best_score, avg_score = team
-        icon = position_icons[i] if i < 3 else f"{i+1}."
-        text += f"{icon} *{team_name}*\n"
-        text += f"   ⭐ Очки: {points} | 🎮 Игр: {games_played}\n"
-        text += f"   🥇{gold} 🥈{silver} 🥉{bronze} | Средний балл: {avg_score}\n\n"
-
-    await message.answer(text, parse_mode="Markdown")
+# Хендлер "🏅 Рейтинг команд" перенесён в handlers/results.py (новая логика
+# с выбором города и типа игр). Здесь его больше нет, чтобы не было дублей.
 
 
 @router.message(F.text == "🎖 Таблица рекордов")
