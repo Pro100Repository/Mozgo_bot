@@ -12,7 +12,7 @@ def main_menu():
         keyboard=[
             [KeyboardButton(text="📅 Предстоящие игры"),  KeyboardButton(text="🏅 Рейтинг команд")],
             [KeyboardButton(text="❓ FAQ"),                KeyboardButton(text="📞 Контакты")],
-            [KeyboardButton(text="🎯 Попробуй свои силы")],
+            [KeyboardButton(text="📖 Правила"),            KeyboardButton(text="🎯 Попробуй свои силы")],
         ],
         resize_keyboard=True
     )

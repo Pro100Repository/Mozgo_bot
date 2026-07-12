@@ -29,7 +29,7 @@ def cities_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🏙 {c}", callback_data=f"rt_city_{c}")]
         for c in RESULT_CITIES
-    ])
+    ] + [[InlineKeyboardButton(text="🏠 Главное меню", callback_data="rt_main_menu")]])
 
 
 def groups_kb(city: str):
@@ -51,6 +51,12 @@ async def show_rating_menu(message: Message):
         reply_markup=cities_kb(),
         parse_mode="Markdown"
     )
+
+
+@router.callback_query(F.data == "rt_main_menu")
+async def rt_main_menu(callback: CallbackQuery):
+    await callback.message.delete()
+    await callback.answer()
 
 
 @router.callback_query(F.data == "rt_back")
@@ -76,8 +82,6 @@ async def rt_city_chosen(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("rt_group_"))
 async def rt_group_chosen(callback: CallbackQuery):
-    # rt_group_CITY|KEY  — используем '|' как разделитель, т.к. и город,
-    # и ключ типа игр могут содержать "_" внутри себя
     city, group_key = callback.data.replace("rt_group_", "").split("|", 1)
 
     group_label = RATING_GROUPS[group_key]["label"]
@@ -94,7 +98,7 @@ async def rt_group_chosen(callback: CallbackQuery):
         await callback.answer()
         return
 
-    # ─── Лідер (окреме повідомлення з рандомним фото) ───────────────────────
+    # ─── Лідер з рандомним фото ──────────────────────────────────────────────
     leader_name, leader_data = sorted_teams[0]
     leader_photos = leader_data["photos"]
     leader_w1     = leader_data["w1"]
@@ -118,8 +122,8 @@ async def rt_group_chosen(callback: CallbackQuery):
     else:
         await callback.message.answer(leader_text, parse_mode="Markdown")
 
-    # ─── Загальна статистика + список команд ─────────────────────────────────
-    total_w1 = sum(d["w1"] for _, d in sorted_teams)
+    # ─── Статистика + список команд ──────────────────────────────────────────
+    total_w1   = sum(d["w1"] for _, d in sorted_teams)
     total_top3 = sum(d["w1"] + d["w2"] + d["w3"] for _, d in sorted_teams)
 
     text = (
