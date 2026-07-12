@@ -36,7 +36,7 @@ def groups_kb(city: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text=info["label"],
-            callback_data=f"rt_group_{city}_{key}"
+            callback_data=f"rt_group_{city}|{key}"
         )]
         for key, info in RATING_GROUPS.items()
     ] + [[InlineKeyboardButton(text="◀️ Назад", callback_data="rt_back")]])
@@ -76,10 +76,9 @@ async def rt_city_chosen(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("rt_group_"))
 async def rt_group_chosen(callback: CallbackQuery):
-    # rt_group_CITY_KEY  — city може містити пробіли, тому split з maxsplit
-    parts     = callback.data.replace("rt_group_", "").rsplit("_", 1)
-    city      = parts[0]
-    group_key = parts[1]
+    # rt_group_CITY|KEY  — используем '|' как разделитель, т.к. и город,
+    # и ключ типа игр могут содержать "_" внутри себя
+    city, group_key = callback.data.replace("rt_group_", "").split("|", 1)
 
     group_label = RATING_GROUPS[group_key]["label"]
     sorted_teams, total_games = await get_rating(city, group_key)
