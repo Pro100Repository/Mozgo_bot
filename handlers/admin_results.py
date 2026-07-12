@@ -259,14 +259,13 @@ async def save_result(message: Message, state: FSMContext):
     p3 = data.get("place3_team") or "—"
 
     await message.answer(
-        f"✅ Результат сохранён! ID: `{result_id}`\n\n"
+        f"✅ Результат сохранён! ID: {result_id}\n\n"
         f"🏙 Город: {data['city']}\n"
         f"🎮 Игра: {data['game_label']} — {data['game_name']}\n"
         f"🥇 1 место: {p1}\n"
         f"🥈 2 место: {p2}\n"
         f"🥉 3 место: {p3}\n\n"
-        f"Для редактирования: /edit_result {result_id}",
-        parse_mode="Markdown"
+        f"Для редактирования: /edit_result {result_id}"
     )
 
 
@@ -304,14 +303,13 @@ async def cmd_edit_result(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="🥉 3 место (фото)",     callback_data="er_place3_photo")],
     ])
     await message.answer(
-        f"✏️ *Редактирование ID {result_id}*\n\n"
+        f"✏️ Редактирование ID {result_id}\n\n"
         f"🏙 {city} | {RESULT_GAME_TYPES.get(gtype, gtype)} | {gname}\n"
         f"🥇 {p1t or '—'} {'📷' if p1p else ''}\n"
         f"🥈 {p2t or '—'} {'📷' if p2p else ''}\n"
         f"🥉 {p3t or '—'} {'📷' if p3p else ''}\n\n"
         "Что хочешь изменить?",
-        reply_markup=buttons,
-        parse_mode="Markdown"
+        reply_markup=buttons
     )
     await state.set_state(EditResultForm.choose_field)
 
@@ -395,16 +393,16 @@ async def cmd_list_results(message: Message):
         await message.answer("📭 Результатов пока нет.")
         return
 
-    text = "📋 *Последние результаты:*\n\n"
+    text = "📋 Последние результаты:\n\n"
     for r in rows:
         rid, city, gtype, gname, p1, p2, p3, created = r
         text += (
-            f"ID `{rid}` | {city} | {RESULT_GAME_TYPES.get(gtype, gtype)}\n"
+            f"ID {rid} | {city} | {RESULT_GAME_TYPES.get(gtype, gtype)}\n"
             f"   {gname}\n"
             f"   🥇{p1 or '—'} 🥈{p2 or '—'} 🥉{p3 or '—'}\n\n"
         )
-    text += "Редактировать: `/edit_result ID`\nУдалить: `/del_result ID`"
-    await message.answer(text, parse_mode="Markdown")
+    text += "Редактировать: /edit_result ID\nУдалить: /del_result ID"
+    await message.answer(text)
 
 
 @router.message(Command("del_result"))
