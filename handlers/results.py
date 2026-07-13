@@ -5,6 +5,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import RESULT_CITIES, RATING_GROUPS, get_rating
+from handlers.start import main_menu
 
 router = Router()
 
@@ -56,6 +57,7 @@ async def show_rating_menu(message: Message):
 @router.callback_query(F.data == "rt_main_menu")
 async def rt_main_menu(callback: CallbackQuery):
     await callback.message.delete()
+    await callback.message.answer("👇 Главное меню:", reply_markup=main_menu())
     await callback.answer()
 
 

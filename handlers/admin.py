@@ -16,11 +16,11 @@ def is_admin(user_id: int) -> bool:
 
 # ─────────────────────────────────────────
 # ДОБАВИТЬ ИГРУ
-# Формат: /add_game Название | Дата | Время | Город | Место | Ссылка на регистрацию
+# Формат: /add_game Название | Дата | Время | Город | Место | Цена | Ссылка на регистрацию
 # Дата в формате ДД.MM.ГГГГ, время в формате ЧЧ:MM (24-часовой формат)
 # Город — ОБЯЗАТЕЛЬНОЕ поле (по нему пользователи ищут игры).
 # Время нужно для автоматического удаления игры через 2 часа после начала.
-# Пример: /add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout | https://forms.gle/xxxxx
+# Пример: /add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout | 700 руб | https://forms.gle/xxxxx
 # ─────────────────────────────────────────
 @router.message(Command("add_game"))
 async def cmd_add_game(message: Message):
@@ -33,12 +33,12 @@ async def cmd_add_game(message: Message):
     if not args:
         await message.answer(
             "📝 *Формат команды:*\n\n"
-            "`/add_game Название | Дата | Время | Город | Место | Ссылка на регистрацию`\n\n"
+            "`/add_game Название | Дата | Время | Город | Место | Цена | Ссылка на регистрацию`\n\n"
             "Дата — в формате ДД.MM.ГГГГ\n"
             "Время — в формате ЧЧ:MM (24-часовой формат)\n"
             "Город — обязательное поле!\n\n"
             "*Пример:*\n"
-            "`/add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout | https://forms.gle/xxxxx`\n\n"
+            "`/add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout | 700 руб | https://forms.gle/xxxxx`\n\n"
             "Игра автоматически исчезнет из списка через 2 часа после начала.",
             parse_mode="Markdown"
         )
@@ -51,7 +51,7 @@ async def cmd_add_game(message: Message):
             "❌ Неверный формат. Нужно минимум: *Название | Дата | Время | Город*\n\n"
             "Город обязателен — по нему пользователи ищут игры.\n"
             "Время обязательно — по нему бот понимает, когда удалить игру.\n\n"
-            "Пример: `/add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout`",
+            "Пример: `/add_game Квиз №5 | 20.06.2026 | 19:00 | Киев | Бар Burnout | 700 руб | https://forms.gle/xxxxx`",
             parse_mode="Markdown"
         )
         return
@@ -75,7 +75,9 @@ async def cmd_add_game(message: Message):
         return
 
     location           = parts[4] if len(parts) > 4 else ""
-    registration_link  = parts[5] if len(parts) > 5 else ""
+    price              = parts[5] if len(parts) > 5 else ""
+    registration_link  = parts[6] if len(parts) > 6 else ""
+    registration_link = parts[6] if len(parts) > 6 else ""
 
     # В поле "date" сохраняем дату+время вместе для красивого отображения
     display_date = f"{date} {time_str}"
@@ -84,7 +86,8 @@ async def cmd_add_game(message: Message):
         title, display_date, location,
         registration_link=registration_link,
         city=city,
-        event_datetime=event_datetime
+        event_datetime=event_datetime,
+        price=price
     )
 
     reg_status = registration_link if registration_link else "—"
@@ -94,6 +97,7 @@ async def cmd_add_game(message: Message):
         f"📆 Дата и время: {display_date}\n"
         f"🏙 Город: {city}\n"
         f"📍 Место: {location or '—'}\n"
+        f"💰 Цена: {price or '—'}\n"
         f"📝 Регистрация: {reg_status}\n\n"
         f"ℹ️ Игра автоматически исчезнет из списка через 2 часа после начала."
     )
@@ -274,7 +278,7 @@ async def cmd_admin_help(message: Message):
     await message.answer(
         "🔧 *Админ-команды:*\n\n"
         "📅 *Игры:*\n"
-        "`/add_game` Название | Дата | Время | Город | Место | Ссылка на регистрацию\n\n"
+        "`/add_game` Название | Дата | Время | Город | Место | *Цена* | Ссылка на регистрацию\n\n"
         "*ПРИМЕР* (Все значения надо прописывать через *вертикальную черту*, дата и время *только в таком формате*: \n"
         "`/add_game` Классическая | 01.01.2027 | 22:00 | Мозгожопинск | В клубе | Ссылка \n\n"
         "`/list_games` — список игр с ID\n"

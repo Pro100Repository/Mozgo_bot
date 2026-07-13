@@ -2,6 +2,7 @@
 
 from aiogram import Router, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from handlers.start import main_menu
 
 from database.db import get_games_by_city, get_results
 
@@ -25,21 +26,25 @@ def cities_keyboard():
         [InlineKeyboardButton(text=f"🏙 {city}", callback_data=f"city_{city}")]
         for city in CITIES
     ]
+    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="city_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def back_to_cities_keyboard():
     """Кнопка возврата к выбору города"""
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="◀️ Назад к выбору города", callback_data="city_back")
-    ]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Назад к выбору города", callback_data="city_back")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="city_main_menu")],
+    ])
 
 
-def build_game_text(title, date, location, registration_link):
+def build_game_text(title, date, location, price, registration_link):
     text = f"🎯 {escape_html(title)}\n"
     text += f"📆 Дата: {escape_html(date)}\n"
     if location:
         text += f"📍 Место: {escape_html(location)}\n"
+    if price:
+        text += f"💰 Цена: {escape_html(price)}\n"
     if registration_link:
         text += f'📝 <a href="{registration_link}">Регистрация</a>\n'
     return text
@@ -59,7 +64,14 @@ async def ask_city(message: Message):
 async def city_chosen(callback: CallbackQuery):
     city = callback.data.replace("city_", "")
 
-    # Обработка кнопки "Назад"
+    # Кнопка "Главное меню"
+    if city == "main_menu":
+        await callback.message.delete()
+        await callback.message.answer("👇 Главное меню:", reply_markup=main_menu())
+        await callback.answer()
+        return
+
+    # Обработка кнопки "Назад к выбору города"
     if city == "back":
         await callback.message.edit_text(
             "🏙 Выберите город:",
@@ -79,23 +91,23 @@ async def city_chosen(callback: CallbackQuery):
         await callback.answer()
         return
 
-    # Разделяем игры на те, у которых есть фото, и те, у которых нет
-    games_with_photo = [g for g in games if g[4]]   # photo_id на 5-й позиции
-    games_without_photo = [g for g in games if not g[4]]
+    # Розділяємо ігри на ті, у яких є фото, і ті, у яких нема
+    games_with_photo    = [g for g in games if g[5]]   # photo_id на 6-й позиції
+    games_without_photo = [g for g in games if not g[5]]
 
-    # Сначала убираем старое сообщение со списком городов
+    # Видаляємо старе повідомлення зі списком міст
     await callback.message.delete()
 
-    # Игры без фото — одним текстовым сообщением
+    # Ігри без фото — одним текстовим повідомленням
     if games_without_photo:
         text = f"📅 Игры в городе «{city}»:\n\n"
-        for title, date, location, registration_link, _ in games_without_photo:
-            text += build_game_text(title, date, location, registration_link) + "\n"
+        for title, date, location, price, registration_link, _ in games_without_photo:
+            text += build_game_text(title, date, location, price, registration_link) + "\n"
         await callback.message.answer(text, parse_mode="HTML")
 
-    # Игры с фото — отдельным сообщением-фото на каждую игру
-    for title, date, location, registration_link, photo_id in games_with_photo:
-        caption = build_game_text(title, date, location, registration_link)
+    # Ігри з фото — окремим повідомленням на кожну
+    for title, date, location, price, registration_link, photo_id in games_with_photo:
+        caption = build_game_text(title, date, location, price, registration_link)
         await callback.message.answer_photo(
             photo=photo_id,
             caption=caption,
