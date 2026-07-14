@@ -4,8 +4,8 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
-from handlers import faq, games, start, admin, rating, contacts, quiz, admin_quiz, admin_results, results, rules
-from database.db import init_db, migrate_db, cleanup_finished_games, init_results_db
+from handlers import faq, games, start, admin, admin_games, rating, contacts, quiz, admin_quiz, admin_results, results, rules, subscription
+from database.db import init_db, migrate_db, cleanup_finished_games, init_results_db, init_subscriptions_db
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,11 +26,13 @@ async def main():
     await init_db()
     await migrate_db()
     await init_results_db()
+    await init_subscriptions_db()
 
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
 
     dp.include_router(start.router)
+    dp.include_router(subscription.router)
     dp.include_router(rating.router)
     dp.include_router(results.router)
     dp.include_router(rules.router)
@@ -39,6 +41,7 @@ async def main():
     dp.include_router(faq.router)
     dp.include_router(contacts.router)
     dp.include_router(admin_results.router)
+    dp.include_router(admin_games.router)
     dp.include_router(admin_quiz.router)
     dp.include_router(admin.router)
 
