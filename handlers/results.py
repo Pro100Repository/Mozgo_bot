@@ -5,7 +5,6 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import RESULT_CITIES, RATING_GROUPS, get_rating
-from handlers.start import main_menu
 
 router = Router()
 
@@ -30,7 +29,7 @@ def cities_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🏙 {c}", callback_data=f"rt_city_{c}")]
         for c in RESULT_CITIES
-    ] + [[InlineKeyboardButton(text="🏠 Главное меню", callback_data="rt_main_menu")]])
+    ])
 
 
 def groups_kb(city: str):
@@ -52,13 +51,6 @@ async def show_rating_menu(message: Message):
         reply_markup=cities_kb(),
         parse_mode="Markdown"
     )
-
-
-@router.callback_query(F.data == "rt_main_menu")
-async def rt_main_menu(callback: CallbackQuery):
-    await callback.message.delete()
-    await callback.message.answer("👇 Главное меню:", reply_markup=main_menu())
-    await callback.answer()
 
 
 @router.callback_query(F.data == "rt_back")

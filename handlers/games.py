@@ -2,7 +2,6 @@
 
 from aiogram import Router, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from handlers.start import main_menu
 
 from database.db import get_games_by_city, get_results
 
@@ -26,16 +25,14 @@ def cities_keyboard():
         [InlineKeyboardButton(text=f"🏙 {city}", callback_data=f"city_{city}")]
         for city in CITIES
     ]
-    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="city_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def back_to_cities_keyboard():
     """Кнопка возврата к выбору города"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◀️ Назад к выбору города", callback_data="city_back")],
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="city_main_menu")],
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="◀️ Назад к выбору города", callback_data="city_back")
+    ]])
 
 
 def build_game_text(title, date, location, price, registration_link):
@@ -63,13 +60,6 @@ async def ask_city(message: Message):
 @router.callback_query(F.data.startswith("city_"))
 async def city_chosen(callback: CallbackQuery):
     city = callback.data.replace("city_", "")
-
-    # Кнопка "Главное меню"
-    if city == "main_menu":
-        await callback.message.delete()
-        await callback.message.answer("👇 Главное меню:", reply_markup=main_menu())
-        await callback.answer()
-        return
 
     # Обработка кнопки "Назад к выбору города"
     if city == "back":

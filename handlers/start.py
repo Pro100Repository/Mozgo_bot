@@ -10,9 +10,10 @@ router = Router()
 def main_menu():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📅 Предстоящие игры"),  KeyboardButton(text="🏅 Рейтинг команд")],
-            [KeyboardButton(text="❓ FAQ"),                KeyboardButton(text="📞 Контакты")],
-            [KeyboardButton(text="📖 Правила"),            KeyboardButton(text="🎯 Попробуй свои силы")],
+            [KeyboardButton(text="📅 Предстоящие игры"),    KeyboardButton(text="🏅 Рейтинг команд")],
+            [KeyboardButton(text="❓ FAQ"),                  KeyboardButton(text="📞 Контакты")],
+            [KeyboardButton(text="📖 Правила"),              KeyboardButton(text="🎯 Попробуй свои силы")],
+            [KeyboardButton(text="🔔 Подписка на игры")],
         ],
         resize_keyboard=True
     )

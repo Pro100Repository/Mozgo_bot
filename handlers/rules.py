@@ -2,7 +2,6 @@
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from handlers.start import main_menu
 
 router = Router()
 
@@ -95,7 +94,7 @@ def rules_menu_kb():
         [InlineKeyboardButton(text="🧠 Мозгобойня",     callback_data="rules_mozgoboynya_0")],
         [InlineKeyboardButton(text="🎵 Туц Туц QUIZ",   callback_data="rules_tuc_tuc_0")],
         [InlineKeyboardButton(text="🎮 Квизмашина",     callback_data="rules_kvizmashina_0")],
-        [InlineKeyboardButton(text="🏠 Главное меню",   callback_data="rules_close")],
+
     ])
 
 
@@ -136,7 +135,6 @@ async def rules_back_to_menu(callback: CallbackQuery):
 @router.callback_query(F.data == "rules_close")
 async def rules_close(callback: CallbackQuery):
     await callback.message.delete()
-    await callback.message.answer("👇 Главное меню:", reply_markup=main_menu())
     await callback.answer()
 
 

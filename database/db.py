@@ -17,6 +17,7 @@ async def init_db():
                 date TEXT NOT NULL,
                 event_datetime TEXT,
                 location TEXT,
+                price TEXT DEFAULT '',
                 registration_link TEXT DEFAULT '',
                 max_players INTEGER DEFAULT 0,
                 city TEXT DEFAULT '',
@@ -101,15 +102,20 @@ async def migrate_db():
             await db.commit()
             print("✅ Миграция: добавлено поле photo_id")
 
+        if "price" not in columns:
+            await db.execute("ALTER TABLE games ADD COLUMN price TEXT DEFAULT ''")
+            await db.commit()
+            print("✅ Миграция: добавлено поле price")
+
 
 # ─── ІГРИ ───────────────────────────────
 
 async def get_upcoming_games(with_id: bool = False):
     async with aiosqlite.connect(DATABASE_NAME) as db:
         if with_id:
-            query = "SELECT id, title, date, location, registration_link, max_players, city FROM games ORDER BY date"
+            query = "SELECT id, title, date, location, price, registration_link, max_players, city FROM games ORDER BY date"
         else:
-            query = "SELECT title, date, location, registration_link, city FROM games ORDER BY date"
+            query = "SELECT title, date, location, price, registration_link, city FROM games ORDER BY date"
         async with db.execute(query) as cursor:
             return await cursor.fetchall()
 
@@ -117,13 +123,13 @@ async def get_upcoming_games(with_id: bool = False):
 async def get_game_by_id(game_id: int):
     async with aiosqlite.connect(DATABASE_NAME) as db:
         async with db.execute(
-            "SELECT id, title, date, location, registration_link, max_players, city FROM games WHERE id = ?",
+            "SELECT id, title, date, location, price, registration_link, max_players, city FROM games WHERE id = ?",
             (game_id,)
         ) as cursor:
             return await cursor.fetchone()
 
 
-async def add_game(title, date, location, registration_link="", max_players=0, city="", event_datetime=None, photo_id=""):
+async def add_game(title, date, location, registration_link="", max_players=0, city="", event_datetime=None, photo_id="", price=""):
     """
     event_datetime — дата и время начала игры в формате ISO ("2026-06-25 20:00"),
     нужно для автоматического удаления завершившихся игр.
@@ -132,9 +138,9 @@ async def add_game(title, date, location, registration_link="", max_players=0, c
     """
     async with aiosqlite.connect(DATABASE_NAME) as db:
         await db.execute(
-            "INSERT INTO games (title, date, location, registration_link, max_players, city, event_datetime, photo_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (title, date, location, registration_link, max_players, city, event_datetime, photo_id)
+            "INSERT INTO games (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id)
         )
         await db.commit()
 
@@ -198,7 +204,7 @@ async def get_games_by_city(city: str):
     """Повертає ігри в конкретному місті (тільки ті, що ще не завершились)"""
     async with aiosqlite.connect(DATABASE_NAME) as db:
         async with db.execute(
-            "SELECT title, date, location, registration_link, event_datetime, photo_id "
+            "SELECT title, date, location, price, registration_link, event_datetime, photo_id "
             "FROM games WHERE LOWER(city) = LOWER(?) ORDER BY date",
             (city,)
         ) as cursor:
@@ -206,15 +212,15 @@ async def get_games_by_city(city: str):
 
     now = datetime.now()
     result = []
-    for title, date, location, registration_link, event_datetime, photo_id in rows:
+    for title, date, location, price, registration_link, event_datetime, photo_id in rows:
         if event_datetime:
             try:
                 game_dt = datetime.strptime(event_datetime, "%Y-%m-%d %H:%M")
                 if now >= game_dt + timedelta(hours=2):
-                    continue  # игра уже закончилась — не показываем
+                    continue
             except (ValueError, TypeError):
                 pass
-        result.append((title, date, location, registration_link, photo_id))
+        result.append((title, date, location, price, registration_link, photo_id))
 
     return result
 
@@ -564,3 +570,74 @@ async def list_game_results(city: str = None, game_type: str = None, limit: int 
             LIMIT ?
         """, params + [limit]) as cursor:
             return await cursor.fetchall()
+
+
+# ─── ПІДПИСКИ НА РОЗСИЛКУ ────────────────────────────────────────────────────
+
+async def init_subscriptions_db():
+    """Створює таблицю підписок"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                city       TEXT NOT NULL,
+                username   TEXT DEFAULT '',
+                UNIQUE(user_id, city)
+            )
+        """)
+        await db.commit()
+
+
+async def subscribe(user_id: int, city: str, username: str = "") -> bool:
+    """Підписати користувача на місто. Повертає True якщо підписка нова."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        try:
+            await db.execute(
+                "INSERT INTO subscriptions (user_id, city, username) VALUES (?, ?, ?)",
+                (user_id, city, username)
+            )
+            await db.commit()
+            return True
+        except Exception:
+            return False  # вже підписаний
+
+
+async def unsubscribe(user_id: int, city: str) -> bool:
+    """Відписати користувача від міста."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            "DELETE FROM subscriptions WHERE user_id = ? AND city = ?",
+            (user_id, city)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def get_user_subscriptions(user_id: int) -> list:
+    """Список міст на які підписаний користувач."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT city FROM subscriptions WHERE user_id = ? ORDER BY city",
+            (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
+
+async def get_city_subscribers(city: str) -> list:
+    """Список user_id всіх підписників міста."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT user_id FROM subscriptions WHERE city = ?",
+            (city,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
+
+async def remove_subscriber(user_id: int):
+    """Видалити всі підписки користувача (заблокував бота)."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("DELETE FROM subscriptions WHERE user_id = ?", (user_id,))
+        await db.commit()
