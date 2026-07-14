@@ -1,8 +1,9 @@
 # handlers/subscription.py — підписка на розсилку нових ігор по містах
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
+from config import SUBSCRIPTION_ADMIN_ID
 from database.db import (
     RESULT_CITIES, subscribe, unsubscribe,
     get_user_subscriptions
@@ -29,6 +30,27 @@ async def subscription_kb(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+async def notify_admin_new_subscription(bot: Bot, user, city: str):
+    """Надсилає конкретному адміну (SUBSCRIPTION_ADMIN_ID) сповіщення про нову підписку."""
+    if not SUBSCRIPTION_ADMIN_ID:
+        return  # ID адміна не задано в .env — пропускаем без ошибки
+
+    full_name = user.full_name or user.first_name or "—"
+    username_part = f"@{user.username}" if user.username else "—"
+
+    text = (
+        "🔔 *Новая подписка на рассылку!*\n\n"
+        f"👤 Имя: {full_name}\n"
+        f"🔗 Username: {username_part}\n"
+        f"🆔 ID: `{user.id}`\n"
+        f"🏙 Город: {city}"
+    )
+    try:
+        await bot.send_message(SUBSCRIPTION_ADMIN_ID, text, parse_mode="Markdown")
+    except Exception as e:
+        print(f"⚠️ Не удалось отправить уведомление админу о подписке: {e}")
+
+
 # ─── ХЕНДЛЕРИ ────────────────────────────────────────────────────────────────
 
 @router.message(F.text == "🔔 Подписка на игры")
@@ -51,7 +73,7 @@ async def show_subscription(message: Message):
 
 
 @router.callback_query(F.data.startswith("sub_toggle_"))
-async def toggle_subscription(callback: CallbackQuery):
+async def toggle_subscription(callback: CallbackQuery, bot: Bot):
     city = callback.data.replace("sub_toggle_", "")
     user_id = callback.from_user.id
     username = callback.from_user.username or callback.from_user.first_name
@@ -64,6 +86,7 @@ async def toggle_subscription(callback: CallbackQuery):
     else:
         await subscribe(user_id, city, username)
         await callback.answer(f"✅ Подписан на {city}")
+        await notify_admin_new_subscription(bot, callback.from_user, city)
 
     # Оновлюємо клавіатуру
     await callback.message.edit_reply_markup(

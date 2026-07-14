@@ -18,5 +18,15 @@ if not BOT_TOKEN:
 _admin_ids_raw = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(x.strip()) for x in _admin_ids_raw.split(",") if x.strip()]
 
+# ID админа, которому приходят уведомления о новых подписках на рассылку
+_subscription_admin_raw = os.getenv("SUBSCRIPTION_ADMIN_ID", "")
+SUBSCRIPTION_ADMIN_ID = int(_subscription_admin_raw) if _subscription_admin_raw.strip() else None
+
+if SUBSCRIPTION_ADMIN_ID is None:
+    print(
+        "⚠️ SUBSCRIPTION_ADMIN_ID не найден в .env — уведомления о новых "
+        "подписках отправляться не будут. Добавь строку SUBSCRIPTION_ADMIN_ID=твой_id в .env"
+    )
+
 # Назва файлу бази даних
 DATABASE_NAME = "quiz_bot.db"
