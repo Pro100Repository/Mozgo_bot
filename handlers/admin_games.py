@@ -65,6 +65,7 @@ async def broadcast_new_game(bot, city: str, title: str, display_date: str,
                               location: str, price: str, registration_link: str,
                               photo_id: str = ""):
     import asyncio
+    import html
     from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
     subscribers = await get_city_subscribers(city)
@@ -72,24 +73,24 @@ async def broadcast_new_game(bot, city: str, title: str, display_date: str,
         return 0
 
     text = (
-        f"🔔 *Новая игра в городе {city}!*\n\n"
-        f"🎯 {title}\n"
-        f"📆 {display_date}\n"
+        f"🔔 <b>Новая игра в городе {html.escape(city)}!</b>\n\n"
+        f"🎯 {html.escape(title)}\n"
+        f"📆 {html.escape(display_date)}\n"
     )
     if location:
-        text += f"📍 Место: {location}\n"
+        text += f"📍 Место: {html.escape(location)}\n"
     if price:
-        text += f"💰 Цена: {price}\n"
+        text += f"💰 Цена: {html.escape(price)}\n"
     if registration_link:
-        text += f"📝 [Регистрация]({registration_link})\n"
+        text += f'📝 <a href="{html.escape(registration_link)}">Регистрация</a>\n'
 
     sent = 0
     for user_id in subscribers:
         try:
             if photo_id:
-                await bot.send_photo(user_id, photo=photo_id, caption=text, parse_mode="Markdown")
+                await bot.send_photo(user_id, photo=photo_id, caption=text, parse_mode="HTML")
             else:
-                await bot.send_message(user_id, text, parse_mode="Markdown")
+                await bot.send_message(user_id, text, parse_mode="HTML")
             sent += 1
             await asyncio.sleep(0.05)
         except TelegramForbiddenError:
@@ -270,7 +271,7 @@ async def show_confirm(message: Message, state: FSMContext):
     display_date = f"{data['date']} {data['time']}"
 
     text = (
-        f"📋 *Проверь данные игры:*\n\n"
+        f"📋 Проверь данные игры:\n\n"
         f"🎯 Название: {data['title']}\n"
         f"📆 Дата и время: {display_date}\n"
         f"🏙 Город: {data['city']}\n"
@@ -280,7 +281,7 @@ async def show_confirm(message: Message, state: FSMContext):
         f"🖼 Фото: {'✅ есть' if data.get('photo_id') else '—'}\n\n"
         "Всё верно?"
     )
-    await message.answer(text, reply_markup=confirm_kb(), parse_mode="Markdown")
+    await message.answer(text, reply_markup=confirm_kb())
     await state.set_state(AddGameForm.confirm)
 
 
@@ -304,9 +305,8 @@ async def ag_confirm(callback: CallbackQuery, state: FSMContext):
     )
 
     await callback.message.edit_text(
-        f"✅ Игра *{data['title']}* добавлена!\n\n"
-        f"📨 Отправляю уведомления подписчикам {data['city']}...",
-        parse_mode="Markdown"
+        f"✅ Игра {data['title']} добавлена!\n\n"
+        f"📨 Отправляю уведомления подписчикам {data['city']}..."
     )
 
     # Розсилка
@@ -373,13 +373,13 @@ async def cmd_list_games(message: Message):
         await message.answer("📭 Предстоящих игр нет.")
         return
 
-    text = "📋 *Список игр (для админа):*\n\n"
+    text = "📋 Список игр (для админа):\n\n"
     for game in games:
         game_id, title, date, location, registration_link, max_players, city = game[:7]
-        text += f"ID: `{game_id}` — *{title}* ({date}, {city})\n"
+        text += f"ID: {game_id} — {title} ({date}, {city})\n"
 
-    text += "\nЧтобы удалить: `/del_game ID`"
-    await message.answer(text, parse_mode="Markdown")
+    text += "\nЧтобы удалить: /del_game ID"
+    await message.answer(text)
 
 
 # ─── ФОТО ДО ГРИ ──────────────────────────────────────────────────────────────
