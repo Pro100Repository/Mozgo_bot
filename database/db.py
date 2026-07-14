@@ -641,3 +641,23 @@ async def remove_subscriber(user_id: int):
     async with aiosqlite.connect(DATABASE_NAME) as db:
         await db.execute("DELETE FROM subscriptions WHERE user_id = ?", (user_id,))
         await db.commit()
+
+
+async def get_subscription_stats() -> list:
+    """Кількість підписників по кожному місту (від більшого до меншого)."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT city, COUNT(*) as cnt FROM subscriptions GROUP BY city ORDER BY cnt DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [(r[0], r[1]) for r in rows]
+
+
+async def get_total_subscribers_count() -> int:
+    """Кількість унікальних користувачів, підписаних хоча б на одне місто."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM subscriptions"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0

@@ -5,7 +5,7 @@ from aiogram.types import Message
 from aiogram.filters import Command
 
 from config import ADMIN_IDS
-from database.db import add_result
+from database.db import add_result, get_subscription_stats, get_total_subscribers_count
 
 router = Router()
 
@@ -78,6 +78,38 @@ async def cmd_add_result(message: Message):
 
 
 # ─────────────────────────────────────────
+# СТАТИСТИКА ПОДПИСОК
+# Формат: /subscribers
+# Показывает количество подписчиков по каждому городу и общее число.
+# ─────────────────────────────────────────
+@router.message(Command("subscribers"))
+async def cmd_subscribers(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ У вас нет прав для этой команды.")
+        return
+
+    stats = await get_subscription_stats()
+    total_users = await get_total_subscribers_count()
+
+    if not stats:
+        await message.answer("📭 Пока никто не подписан ни на один город.")
+        return
+
+    text = (
+        "🔔 *Статистика подписок*\n\n"
+        f"👥 Уникальных подписчиков: *{total_users}*\n\n"
+        "📍 *По городам:*\n"
+    )
+    for city, count in stats:
+        text += f"  🏙 {city} — {count}\n"
+
+    total_slots = sum(count for _, count in stats)
+    text += f"\nℹ️ Всего подписок (город+юзер): {total_slots}"
+
+    await message.answer(text, parse_mode="Markdown")
+
+
+# ─────────────────────────────────────────
 # СПИСОК АДМИН-КОМАНД
 # ─────────────────────────────────────────
 @router.message(Command("admin"))
@@ -102,6 +134,8 @@ async def cmd_admin_help(message: Message):
         "`/add_question` — добавить вопрос (пошаговая форма)\n"
         "`/list_questions` — список вопросов по категориям\n"
         "`/del_question ID` — удалить вопрос\n"
-        "`/quiz_stats` — информация с количеством вопросов в каждой категории (1 категория 8 вопросов, 2 категория 3 вопроса и т.д.)",
+        "`/quiz_stats` — информация с количеством вопросов в каждой категории (1 категория 8 вопросов, 2 категория 3 вопроса и т.д.)\n\n"
+        "🔔 *Подписки:*\n"
+        "`/subscribers` — статистика подписок по городам и всего уникальных подписчиков",
         parse_mode="Markdown"
     )
