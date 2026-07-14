@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, Router, F
+from aiogram.types import Message
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
@@ -8,6 +9,17 @@ from handlers import faq, games, start, admin, admin_games, rating, contacts, qu
 from database.db import init_db, migrate_db, cleanup_finished_games, init_results_db, init_subscriptions_db
 
 logging.basicConfig(level=logging.INFO)
+
+# ─── ВРЕМЕННЫЙ ДИАГНОСТИЧЕСКИЙ РОУТЕР ────────────────────────────
+# Ловит любое текстовое сообщение, которое не обработал ни один
+# другой хендлер, и печатает его repr() — точные байты, включая
+# невидимые символы. Удалить после диагностики!
+debug_router = Router()
+
+@debug_router.message(F.text)
+async def debug_unhandled(message: Message):
+    print(f"🔍 DEBUG необработанный текст: {repr(message.text)}")
+
 
 
 async def cleanup_loop():
@@ -44,6 +56,7 @@ async def main():
     dp.include_router(admin_games.router)
     dp.include_router(admin_quiz.router)
     dp.include_router(admin.router)
+    dp.include_router(debug_router)  # ВРЕМЕННЫЙ, удалить после диагностики
 
     # Запускаем фоновую очистку завершённых игр параллельно с ботом
     asyncio.create_task(cleanup_loop())
