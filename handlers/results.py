@@ -9,18 +9,18 @@ from database.db import RESULT_CITIES, RATING_GROUPS, get_rating
 router = Router()
 
 # ─── РАНГИ ───────────────────────────────────────────────────────────────────
-RANKS = [
-    (10, "👑 Легенда"),
-    (5,  "🔥 Мастер"),
-    (2,  "⭐ Опытный"),
-    (1,  "🌱 Новичок"),
-]
+# RANKS = [
+#   (10, "👑 Легенда"),
+#   (5,  "🔥 Мастер"),
+#  (2,  "⭐ Опытный"),
+#    (1,  "🌱 Новичок"),
+#]
 
-def get_rank(wins1: int) -> str:
-    for threshold, rank in RANKS:
-        if wins1 >= threshold:
-            return rank
-    return "🌱 Новичок"
+#def get_rank(wins1: int) -> str:
+#    for threshold, rank in RANKS:
+#        if wins1 >= threshold:
+#            return rank
+#    return "🌱 Новичок"
 
 
 # ─── КЛАВІАТУРИ ──────────────────────────────────────────────────────────────
@@ -44,10 +44,10 @@ def groups_kb(city: str):
 
 # ─── ХЕНДЛЕРИ ────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "🏅 Рейтинг команд")
+@router.message(F.text == "🏅 Лидеры месяца")
 async def show_rating_menu(message: Message):
     await message.answer(
-        "🏅 *Рейтинг команд*\n\nВыбери город:",
+        "🏅 *Лидеры месяца*\n\nВыбери город:",
         reply_markup=cities_kb(),
         parse_mode="Markdown"
     )
@@ -56,7 +56,7 @@ async def show_rating_menu(message: Message):
 @router.callback_query(F.data == "rt_back")
 async def rt_back(callback: CallbackQuery):
     await callback.message.edit_text(
-        "🏅 *Рейтинг команд*\n\nВыбери город:",
+        "🏅 *Лидеры месяца*\n\nВыбери город:",
         reply_markup=cities_kb(),
         parse_mode="Markdown"
     )
@@ -135,6 +135,8 @@ async def rt_group_chosen(callback: CallbackQuery):
         text += (
             f"{pos_icon} *{team_name}*  {rank}\n"
             f"   🥇 {w1}  🥈 {w2}  🥉 {w3}\n\n"
+
+        'Общий рейтинг команд и их ранги можно просмотреть на сайте <a href="https://rudagames.com">Ruda Games</a>'
         )
 
     back_kb = InlineKeyboardMarkup(inline_keyboard=[[
