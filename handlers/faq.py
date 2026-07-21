@@ -1,9 +1,12 @@
 # handlers/faq.py — FAQ с иерархией категорий
 
 from aiogram import Router, F
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, LinkPreviewOptions
 
 router = Router()
+
+# Вимикаємо прев'ю посилань всюди
+NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 FAQ_DATA = {
 
@@ -59,13 +62,10 @@ FAQ_DATA = {
                     "Как такового ограничения по времени регистрации нет, при наличии мест можно регистрироваться вплоть до начала игры.\n\n"
                     "Но все же, мы рекомендуем регистрироваться заранее. Во-первых, места ограничены и иногда заканчиваются очень быстро, во-вторых, чем раньше вы зарегистрируетесь, тем больше шансов получить лучшие места в зале.\n\n"
                     "В комментариях к регистрации вы можете указать, где именно хотели бы сидеть. Мы стараемся учитывать все ваши пожелания, но, к сожалению, не можем гарантировать, что в 100% случаев вы сядете там, где и планировали. Это связано с особенностями залов, количеством игроков, а также с вашим местом в таблице регистрации. Чем раньше, тем выше шанс!\n\n"
-                    'Остались вопросы по регистрации? Напиши нашему <a href="https://t.me/@kotlettttka">Администратору</a> \n\n'
+                    'Остались вопросы по регистрации? Напиши нашему <a href="https://t.me/kotlettttka">Администратору</a> \n\n'
                     "Регистрация закрывается за 24 часа до начала игры."
-                ),
-                "extra_button": {
-                    "text": "🔔 Подписаться на рассылку",
-                    "callback_data": "open_subscription_menu"
-                }
+                )
+               
             },
             "cancel_registration": {
                 "question": "Как отменить регистрацию?",
@@ -201,7 +201,8 @@ async def show_faq(message: Message):
     await message.answer(
         "❓ Частые вопросы\n\nВыбери категорию 👇",
         reply_markup=categories_keyboard(),
-        parse_mode="HTML"
+        parse_mode="HTML",
+        link_preview_options=NO_PREVIEW
     )
 
 
@@ -216,7 +217,8 @@ async def show_subcategory(callback: CallbackQuery):
     await callback.message.edit_text(
         f"{category['question']}\n\nВыбери вопрос 👇",
         reply_markup=subcategory_keyboard(category_key),
-        parse_mode="HTML"
+        parse_mode="HTML",
+        link_preview_options=NO_PREVIEW
     )
     await callback.answer()
 
@@ -237,7 +239,8 @@ async def show_answer(callback: CallbackQuery):
     await callback.message.edit_text(
         sub["answer"],
         reply_markup=back_to_sub_keyboard(category_key, sub.get("extra_button")),
-        parse_mode="HTML"
+        parse_mode="HTML",
+        link_preview_options=NO_PREVIEW
     )
     await callback.answer()
 
@@ -247,7 +250,8 @@ async def back_to_categories(callback: CallbackQuery):
     await callback.message.edit_text(
         "❓ Частые вопросы\n\nВыбери категорию 👇",
         reply_markup=categories_keyboard(),
-        parse_mode="HTML"
+        parse_mode="HTML",
+        link_preview_options=NO_PREVIEW
     )
     await callback.answer()
 
@@ -257,6 +261,7 @@ async def faq_fallback(callback: CallbackQuery):
     await callback.message.edit_text(
         "❓ Частые вопросы\n\nВыбери категорию 👇",
         reply_markup=categories_keyboard(),
-        parse_mode="HTML"
+        parse_mode="HTML",
+        link_preview_options=NO_PREVIEW
     )
     await callback.answer("Меню обновлено, выбери категорию")
