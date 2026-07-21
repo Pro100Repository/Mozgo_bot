@@ -6,6 +6,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from handlers import faq, games, start, admin, admin_games, rating, contacts, quiz, admin_quiz, admin_results, results, rules, subscription
 from database.db import init_db, migrate_db, cleanup_finished_games, init_results_db, init_subscriptions_db
+from scheduler import scheduler_loop
 
 logging.basicConfig(level=logging.INFO)
 
@@ -47,6 +48,9 @@ async def main():
 
     # Запускаем фоновую очистку завершённых игр параллельно с ботом
     asyncio.create_task(cleanup_loop())
+
+    # Запускаем планировщик авторассылки (каждый день в заданное время)
+    asyncio.create_task(scheduler_loop(bot))
 
     print("✅ Бот запущен!")
     await dp.start_polling(bot)

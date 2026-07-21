@@ -10,7 +10,6 @@ from config import ADMIN_IDS
 from database.db import (
     add_game, delete_game, get_upcoming_games,
     parse_game_datetime, set_game_photo,
-    get_city_subscribers, remove_subscriber
 )
 
 router = Router()
@@ -57,48 +56,6 @@ def skip_kb(cb: str):
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⏭ Пропустить", callback_data=cb)
     ]])
-
-
-# ─── РОЗСИЛКА ────────────────────────────────────────────────────────────────
-
-async def broadcast_new_game(bot, city: str, title: str, display_date: str,
-                              location: str, price: str, registration_link: str,
-                              photo_id: str = ""):
-    import asyncio
-    import html
-    from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
-
-    subscribers = await get_city_subscribers(city)
-    if not subscribers:
-        return 0
-
-    text = (
-        f"🔔 <b>Новая игра в городе {html.escape(city)}!</b>\n\n"
-        f"🎯 {html.escape(title)}\n"
-        f"📆 {html.escape(display_date)}\n"
-    )
-    if location:
-        text += f"📍 Место: {html.escape(location)}\n"
-    if price:
-        text += f"💰 Цена: {html.escape(price)}\n"
-    if registration_link:
-        text += f'📝 <a href="{html.escape(registration_link)}">Регистрация</a>\n'
-
-    sent = 0
-    for user_id in subscribers:
-        try:
-            if photo_id:
-                await bot.send_photo(user_id, photo=photo_id, caption=text, parse_mode="HTML")
-            else:
-                await bot.send_message(user_id, text, parse_mode="HTML")
-            sent += 1
-            await asyncio.sleep(0.05)
-        except TelegramForbiddenError:
-            await remove_subscriber(user_id)
-        except (TelegramBadRequest, Exception):
-            pass
-
-    return sent
 
 
 # ─── СТАРТ ФОРМИ ─────────────────────────────────────────────────────────────
@@ -305,26 +262,14 @@ async def ag_confirm(callback: CallbackQuery, state: FSMContext):
     )
 
     await callback.message.edit_text(
-        f"✅ Игра {data['title']} добавлена!\n\n"
-        f"📨 Отправляю уведомления подписчикам {data['city']}..."
+        f"✅ Игра *{data['title']}* добавлена!\n\n"
+        f"🏙 Город: {data['city']}\n"
+        f"📆 {display_date}\n\n"
+        f"🔔 Подписчики получат уведомление автоматически за день до игры в 12:00",
+        parse_mode="Markdown"
     )
 
-    # Розсилка
-    sent = await broadcast_new_game(
-        bot               = callback.bot,
-        city              = data["city"],
-        title             = data["title"],
-        display_date      = display_date,
-        location          = data.get("location", ""),
-        price             = data.get("price", ""),
-        registration_link = data.get("registration_link", ""),
-        photo_id          = data.get("photo_id", ""),
-    )
-
-    if sent > 0:
-        await callback.message.answer(f"📨 Уведомление отправлено {sent} подписчикам города {data['city']}.")
-    else:
-        await callback.message.answer("ℹ️ Подписчиков в этом городе пока нет.")
+    # Розсилка відбудеться автоматично о 12:00 за день до гри (через scheduler.py)
 
     await callback.answer()
 

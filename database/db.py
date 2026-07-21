@@ -661,3 +661,18 @@ async def get_total_subscribers_count() -> int:
         ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
+
+
+async def get_games_for_broadcast(target_date: str) -> list:
+    """
+    Повертає ігри на конкретну дату для розсилки.
+    target_date — рядок у форматі 'ГГГГ-ММ-ДД'
+    """
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("""
+            SELECT title, date, location, price, registration_link, city, photo_id
+            FROM games
+            WHERE event_datetime LIKE ?
+            ORDER BY event_datetime
+        """, (f"{target_date}%",)) as cursor:
+            return await cursor.fetchall()
