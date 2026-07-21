@@ -51,25 +51,44 @@ async def notify_admin_new_subscription(bot: Bot, user, city: str):
         print(f"⚠️ Не удалось отправить уведомление админу о подписке: {e}")
 
 
-# ─── ХЕНДЛЕРИ ────────────────────────────────────────────────────────────────
+# ─── ТЕКСТ МЕНЮ ПІДПИСКИ (спільний для обох точок входу) ─────────────────────
 
-@router.message(F.text == "🔔 Подписка на игры")
-async def show_subscription(message: Message):
-    subscribed = await get_user_subscriptions(message.from_user.id)
+async def _subscription_text(user_id: int) -> str:
+    subscribed = await get_user_subscriptions(user_id)
 
     if subscribed:
         status = "Ты подписан на: " + ", ".join(f"*{c}*" for c in subscribed)
     else:
         status = "Ты пока не подписан ни на один город."
 
-    await message.answer(
+    return (
         "🔔 *Подписка на новые игры*\n\n"
         f"{status}\n\n"
         "Выбери города, о новых играх в которых хочешь получать уведомления.\n"
-        "Нажми на город чтобы подписаться или отписаться 👇",
+        "Нажми на город чтобы подписаться или отписаться 👇"
+    )
+
+
+# ─── ХЕНДЛЕРИ ────────────────────────────────────────────────────────────────
+
+@router.message(F.text == "🔔 Подписка на игры")
+async def show_subscription(message: Message):
+    await message.answer(
+        await _subscription_text(message.from_user.id),
         reply_markup=await subscription_kb(message.from_user.id),
         parse_mode="Markdown"
     )
+
+
+@router.callback_query(F.data == "open_subscription_menu")
+async def open_subscription_from_faq(callback: CallbackQuery):
+    """Відкриває меню підписки за callback_data з FAQ (open_subscription_from_faq)."""
+    await callback.message.edit_text(
+        await _subscription_text(callback.from_user.id),
+        reply_markup=await subscription_kb(callback.from_user.id),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("sub_toggle_"))
