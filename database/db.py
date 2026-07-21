@@ -413,7 +413,7 @@ async def get_user_quiz_stats(user_id: int, category: str):
 
 # ─── РЕЗУЛЬТАТИ ІГОР (НОВА СИСТЕМА) ──────────────────────────────────────────
 
-RESULT_CITIES    = ["Москва", "Красногорск", "Истра", "Обнинск"]
+RESULT_CITIES    = ["Москва «бар Liberty»", "Красногорск", "Истра", "Обнинск"]
 RESULT_GAME_TYPES = {
     "mozgoboynya": "Мозгобойня",
     "kvizmashina": "Квизмашина",
