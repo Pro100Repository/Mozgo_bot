@@ -47,7 +47,7 @@ def cities_kb():
 
 def confirm_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Сохранить и отправить уведомления", callback_data="ag_confirm")],
+        [InlineKeyboardButton(text="✅ Сохранить", callback_data="ag_confirm")],
         [InlineKeyboardButton(text="❌ Отменить", callback_data="ag_cancel")],
     ])
 
