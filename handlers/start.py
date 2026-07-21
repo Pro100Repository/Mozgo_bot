@@ -10,7 +10,7 @@ router = Router()
 def main_menu():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📅 Предстоящие игры"),    KeyboardButton(text="🏅 Рейтинг команд")],
+            [KeyboardButton(text="📅 Предстоящие игры"),    KeyboardButton(text="🏅 Лидеры месяца")],
             [KeyboardButton(text="📖 Правила"),              KeyboardButton(text="🎯 Попробуй свои силы")],
             [KeyboardButton(text="❓ FAQ"),                  KeyboardButton(text="📞 Контакты")],
             [KeyboardButton(text="🔔 Подписка на игры")],
@@ -26,7 +26,7 @@ async def cmd_start(message: Message):
         f"👋 Привет, {message.from_user.first_name}!\n\n"
         "Я бот квиз-сообщества *Ruda Games*. Здесь ты найдёшь:\n"
         "📅 Предстоящие игры\n"
-        "🏅 Рейтинг команд\n"
+        "🏅 Лидеры месяца\n"
         "📖 Правила\n"
         "❓ Ответы на частые вопросы\n"
         "📞 Контакты и соцсети\n"

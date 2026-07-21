@@ -16,7 +16,7 @@ from database.db import (
 router = Router()
 
 # Міста — беремо з games.py
-CITIES = ["Москва", "Красногорск", "Истра", "Обнинск"]
+CITIES = ["Москва «бар Liberty» ", "Красногорск", "Истра", "Обнинск"]
 
 
 def is_admin(user_id: int) -> bool:
