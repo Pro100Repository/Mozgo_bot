@@ -779,3 +779,37 @@ async def remove_meme_subscriber(user_id: int):
             "DELETE FROM meme_subscribers WHERE user_id = ?", (user_id,)
         )
         await db.commit()
+
+
+# ─── СТАН ПЛАНУВАЛЬНИКА (щоб рестарт бота не дублював розсилки) ─────────────
+
+async def init_scheduler_db():
+    """Створює таблицю для зберігання дат останніх розсилок (переживає рестарт бота)"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS scheduler_state (
+                key    TEXT PRIMARY KEY,
+                value  TEXT
+            )
+        """)
+        await db.commit()
+
+
+async def get_scheduler_state(key: str):
+    """Повертає збережене значення (наприклад, дату останньої розсилки) або None"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT value FROM scheduler_state WHERE key = ?", (key,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+
+async def set_scheduler_state(key: str, value: str):
+    """Зберігає значення (upsert)"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("""
+            INSERT INTO scheduler_state (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """, (key, value))
+        await db.commit()

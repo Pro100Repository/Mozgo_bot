@@ -86,10 +86,15 @@ async def send_question(message_or_callback, state: FSMContext, edit: bool = Fal
     q_id, q_type, question, opt_a, opt_b, opt_c, opt_d, correct, media_id, media_type = q
 
     total  = len(questions)
-    is_open = (q_type == Q_OPEN)
 
     # Варіанти для закритих питань
     options = [o for o in [opt_a, opt_b, opt_c, opt_d] if o]
+
+    # Q_OPEN — завжди відкрите питання без медіа.
+    # Для медіа-питань (Q_PHOTO/Q_AUDIO/Q_VIDEO) БД не хранить окрему ознаку
+    # "з варіантами" чи "відкрита відповідь" — обидва типи мають однаковий
+    # q_type. Єдина відмінність: у відкритих варіанти відповіді не заповнені.
+    is_open = (q_type == Q_OPEN) or not options
 
     # Зберігаємо мапу "буква -> текст варіанта" (порядок відповідає кнопкам)
     # та сирий текст правильної відповіді. Порівняння з обраним варіантом

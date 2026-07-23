@@ -25,7 +25,8 @@ from config import ADMIN_IDS
 from database.db import (
     get_games_for_broadcast, get_city_subscribers, remove_subscriber,
     get_next_meme, delete_meme, count_memes,
-    get_meme_subscribers, remove_meme_subscriber
+    get_meme_subscribers, remove_meme_subscriber,
+    get_scheduler_state, set_scheduler_state
 )
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,14 @@ async def run_meme_broadcast(bot: Bot):
                 pass
 
 
+async def _load_last_run_date(key: str):
+    """Читає дату останньої розсилки з БД (переживає рестарт бота)"""
+    value = await get_scheduler_state(key)
+    if value:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    return None
+
+
 async def scheduler_loop(bot: Bot):
     """
     Фоновий цикл — чекає потрібного часу і запускає розсилки.
@@ -177,8 +186,8 @@ async def scheduler_loop(bot: Bot):
         f"  Мем дня: щодня о {MEME_HOUR:02d}:{MEME_MINUTE:02d}"
     )
 
-    last_game_run = None   # щоб не запускати двічі в один день
-    last_meme_run = None
+    last_game_run = await _load_last_run_date("last_game_broadcast")
+    last_meme_run = await _load_last_run_date("last_meme_broadcast")
 
     while True:
         now = datetime.now()
@@ -190,6 +199,7 @@ async def scheduler_loop(bot: Bot):
         if (now_time >= game_time
                 and now.date() != last_game_run):
             last_game_run = now.date()
+            await set_scheduler_state("last_game_broadcast", last_game_run.isoformat())
             try:
                 await run_daily_broadcast(bot)
             except Exception as e:
@@ -200,6 +210,7 @@ async def scheduler_loop(bot: Bot):
         if (now_time >= meme_time
                 and now.date() != last_meme_run):
             last_meme_run = now.date()
+            await set_scheduler_state("last_meme_broadcast", last_meme_run.isoformat())
             try:
                 await run_meme_broadcast(bot)
             except Exception as e:

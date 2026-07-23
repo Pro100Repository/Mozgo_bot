@@ -31,7 +31,7 @@ async def cmd_meme_stats(message: Message):
         f"😂 *Статус очереди мемов:*\n\n"
         f"📦 Мемов в очереди: *{count}*\n\n"
         f"{'⚠️ Мало мемов! Загрузи ещё.' if count <= MEME_LOW_THRESHOLD else '✅ Запас мемов в норме.'}\n\n"
-        "Чтобы добавить меме — отправь фото с подписью `/add_meme`",
+        "Чтобы добавить мем — отправь фото с подписью `/add_meme`",
         parse_mode="Markdown"
     )
 

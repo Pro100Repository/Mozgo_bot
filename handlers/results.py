@@ -117,14 +117,14 @@ async def rt_group_chosen(callback: CallbackQuery):
         await callback.message.answer(leader_text, parse_mode="Markdown")
 
     # ─── Статистика + список команд ──────────────────────────────────────────
-    total_w1   = sum(d["w1"] for _, d in sorted_teams)
-    total_top3 = sum(d["w1"] + d["w2"] + d["w3"] for _, d in sorted_teams)
+    #total_w1   = sum(d["w1"] for _, d in sorted_teams)
+    #total_top3 = sum(d["w1"] + d["w2"] + d["w3"] for _, d in sorted_teams)
 
     text = (
         f"📊 *{city} — {group_label}*\n\n"
         f"🎮 Проведено игр: {total_games}\n"
-        f"🥇 Первых мест разыграно: {total_w1}\n"
-        f"🏅 Попаданий в топ-3: {total_top3}\n\n"
+    #    f"🥇 Первых мест разыграно: {total_w1}\n"
+    #    f"🏅 Попаданий в топ-3: {total_top3}\n\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
     )
 
@@ -139,7 +139,7 @@ async def rt_group_chosen(callback: CallbackQuery):
 
     text += (
         "━━━━━━━━━━━━━━━━━━\n"
-        "Общий рейтинг команд и их ранги можно посмотреть на сайте "
+        "Общий рейтинг команд и их ранги можно посмотреть на оффициальном сайте: \n"
         "[Ruda Games](https://rudagames.com)"
     )
 
