@@ -15,7 +15,7 @@ router = Router()
 # ──────────────────────────────────────────
 TG_ADMIN    = "kotlettttka"          # ← твой Telegram username, без @
 TG_MSC  = "rudagamespriglosmsc"                # ← username канала, без @ (или полный URL https://t.me/...)
-TG_KRSN  = "rudagameskrgk"
+TG_KRSN  = "rudagameskrgk"                      # ← username канала, без @ (или полный URL https://t.me/...)
 TG_OBN  = "rudagamesobninsk"
 INSTAGRAM   = "ruda_games"              # ← username Instagram, без @ (или полный URL https://instagram.com/...)
 RUDA   = "https://rudagames.com/"
