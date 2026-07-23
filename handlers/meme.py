@@ -5,7 +5,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 
 from database.db import (
     meme_subscribe, meme_unsubscribe,
-    is_meme_subscribed, count_memes
+    is_meme_subscribed
 )
 
 router = Router()
@@ -32,15 +32,13 @@ def meme_kb(subscribed: bool) -> InlineKeyboardMarkup:
 async def show_meme_subscription(message: Message):
     user_id    = message.from_user.id
     subscribed = await is_meme_subscribed(user_id)
-    memes_left = await count_memes()
-
+    
     status = "✅ Ты подписан на мем дня!" if subscribed else "❌ Ты не подписан на мем дня."
 
     await message.answer(
         f"😂 *Мем дня*\n\n"
         f"{status}\n\n"
-        "Каждый день в 12:00 тебе будет приходить свежий мем 🎉\n\n"
-        f"_В очереди: {memes_left} мемов_",
+        "Каждый день в 12:00 тебе будет приходить свежий мем 🎉\n\n",
         reply_markup=meme_kb(subscribed),
         parse_mode="Markdown"
     )
