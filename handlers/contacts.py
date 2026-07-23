@@ -75,7 +75,6 @@ async def show_contacts(message: Message):
 
     await message.answer(
         f"📞 Контакты и соцсети\n\n"
-        f"✉️ Telegram: @{TG_ADMIN}\n\n"
         "Подписывайся на наши страницы, чтобы не пропустить анонсы и новости 👇",
         reply_markup=buttons
     )
