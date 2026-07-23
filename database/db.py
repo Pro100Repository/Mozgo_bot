@@ -676,3 +676,106 @@ async def get_games_for_broadcast(target_date: str) -> list:
             ORDER BY event_datetime
         """, (f"{target_date}%",)) as cursor:
             return await cursor.fetchall()
+
+
+# ─── МЕМ ДНЯ ─────────────────────────────────────────────────────────────────
+
+async def init_meme_db():
+    """Створює таблиці для мему дня"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        # Черга мемів (в порядку завантаження)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS memes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                photo_id    TEXT NOT NULL,
+                added_at    TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # Підписники на мем дня
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS meme_subscribers (
+                user_id     INTEGER PRIMARY KEY,
+                username    TEXT DEFAULT ''
+            )
+        """)
+        await db.commit()
+
+
+async def add_meme(photo_id: str):
+    """Додає мем в кінець черги"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute(
+            "INSERT INTO memes (photo_id) VALUES (?)", (photo_id,)
+        )
+        await db.commit()
+
+
+async def get_next_meme():
+    """Повертає перший мем з черги (найстаріший)"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT id, photo_id FROM memes ORDER BY id ASC LIMIT 1"
+        ) as cursor:
+            return await cursor.fetchone()
+
+
+async def delete_meme(meme_id: int):
+    """Видаляє мем з черги після відправки"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("DELETE FROM memes WHERE id = ?", (meme_id,))
+        await db.commit()
+
+
+async def count_memes() -> int:
+    """Кількість мемів в черзі"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("SELECT COUNT(*) FROM memes") as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+async def meme_subscribe(user_id: int, username: str = "") -> bool:
+    """Підписати на мем дня. Повертає True якщо підписка нова."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        try:
+            await db.execute(
+                "INSERT INTO meme_subscribers (user_id, username) VALUES (?, ?)",
+                (user_id, username)
+            )
+            await db.commit()
+            return True
+        except Exception:
+            return False
+
+
+async def meme_unsubscribe(user_id: int) -> bool:
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            "DELETE FROM meme_subscribers WHERE user_id = ?", (user_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def is_meme_subscribed(user_id: int) -> bool:
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT 1 FROM meme_subscribers WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            return await cursor.fetchone() is not None
+
+
+async def get_meme_subscribers() -> list:
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("SELECT user_id FROM meme_subscribers") as cursor:
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
+
+async def remove_meme_subscriber(user_id: int):
+    """Видалити підписника (заблокував бота)"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute(
+            "DELETE FROM meme_subscribers WHERE user_id = ?", (user_id,)
+        )
+        await db.commit()

@@ -1,10 +1,17 @@
-# scheduler.py — автоматична розсилка сповіщень про ігри
+# scheduler.py — автоматична розсилка сповіщень про ігри та мем дня
 #
 # НАЛАШТУВАННЯ ЧАСУ РОЗСИЛКИ:
 # ──────────────────────────────────────────────────────────────────
-BROADCAST_HOUR   = 22   # ← година розсилки (за московським часом сервера)
-BROADCAST_MINUTE = 17    # ← хвилина розсилки
-DAYS_BEFORE_GAME = 2    # ← за скільки днів до гри надсилати сповіщення
+BROADCAST_HOUR   = 12   # ← година розсилки ігор (за часом сервера)
+BROADCAST_MINUTE = 0    # ← хвилина розсилки ігор
+DAYS_BEFORE_GAME = 1    # ← за скільки днів до гри надсилати сповіщення
+
+MEME_HOUR   = 12        # ← година відправки мему дня
+MEME_MINUTE = 0         # ← хвилина відправки мему дня
+                        #   (можна зробити інший час ніж розсилка ігор,
+                        #    наприклад MEME_HOUR=10 щоб мем о 10:00, ігри о 12:00)
+
+MEME_LOW_THRESHOLD = 2  # ← при якій кількості мемів надсилати попередження адміну
 # ──────────────────────────────────────────────────────────────────
 
 import asyncio
@@ -14,7 +21,12 @@ from datetime import datetime, timedelta
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
-from database.db import get_games_for_broadcast, get_city_subscribers, remove_subscriber
+from config import ADMIN_IDS
+from database.db import (
+    get_games_for_broadcast, get_city_subscribers, remove_subscriber,
+    get_next_meme, delete_meme, count_memes,
+    get_meme_subscribers, remove_meme_subscriber
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,30 +107,103 @@ async def run_daily_broadcast(bot: Bot):
     logger.info(f"[Scheduler] Розсилка завершена. Надіслано: {total_sent}")
 
 
+async def run_meme_broadcast(bot: Bot):
+    """
+    Надсилає один мем всім підписникам і видаляє його з черги.
+    Якщо мемів мало — надсилає попередження адміну.
+    """
+    meme = await get_next_meme()
+    if not meme:
+        logger.info("[Meme] Черга мемів порожня — розсилка пропущена")
+        # Повідомляємо всіх адмінів
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(
+                    admin_id,
+                    "⚠️ *Черга мемів порожня!*\n\n"
+                    "Мем дня сьогодні не буде відправлений.\n"
+                    "Додай нові меми через `/add_meme`",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        return
+
+    meme_id, photo_id = meme
+    subscribers = await get_meme_subscribers()
+
+    logger.info(f"[Meme] Відправляємо мем {meme_id} для {len(subscribers)} підписників")
+
+    sent = 0
+    for user_id in subscribers:
+        try:
+            await bot.send_photo(user_id, photo=photo_id)
+            sent += 1
+            await asyncio.sleep(0.05)
+        except TelegramForbiddenError:
+            await remove_meme_subscriber(user_id)
+        except (TelegramBadRequest, Exception) as e:
+            logger.warning(f"[Meme] Помилка відправки {user_id}: {e}")
+
+    # Видаляємо відправлений мем з черги
+    await delete_meme(meme_id)
+    logger.info(f"[Meme] Мем {meme_id} відправлено {sent} підписникам та видалено з черги")
+
+    # Перевіряємо залишок і попереджаємо адміна
+    remaining = await count_memes()
+    if remaining <= MEME_LOW_THRESHOLD:
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(
+                    admin_id,
+                    f"⚠️ *Мало мемів у черзі!*\n\n"
+                    f"Залишилось: *{remaining}* мем(ів)\n"
+                    f"Поповни чергу через `/add_meme`",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+
+
 async def scheduler_loop(bot: Bot):
     """
-    Фоновий цикл — чекає потрібного часу і запускає розсилку.
+    Фоновий цикл — чекає потрібного часу і запускає розсилки.
     Перевіряє час щохвилини.
     """
     logger.info(
-        f"[Scheduler] Запущено. Розсилка щодня о "
-        f"{BROADCAST_HOUR:02d}:{BROADCAST_MINUTE:02d}, "
-        f"за {DAYS_BEFORE_GAME} день до гри"
+        f"[Scheduler] Запущено.\n"
+        f"  Ігри: щодня о {BROADCAST_HOUR:02d}:{BROADCAST_MINUTE:02d}, "
+        f"за {DAYS_BEFORE_GAME} день до гри\n"
+        f"  Мем дня: щодня о {MEME_HOUR:02d}:{MEME_MINUTE:02d}"
     )
 
-    last_run_date = None  # щоб не запускати двічі в один день
+    last_game_run = None   # щоб не запускати двічі в один день
+    last_meme_run = None
 
     while True:
         now = datetime.now()
 
-        if (now.hour == BROADCAST_HOUR
-                and now.minute == BROADCAST_MINUTE
-                and now.date() != last_run_date):
-            last_run_date = now.date()
+        now_time = now.hour * 60 + now.minute  # поточний час в хвилинах
+
+        # ─── Розсилка ігор ───────────────────────────────────────
+        game_time = BROADCAST_HOUR * 60 + BROADCAST_MINUTE
+        if (now_time >= game_time
+                and now.date() != last_game_run):
+            last_game_run = now.date()
             try:
                 await run_daily_broadcast(bot)
             except Exception as e:
-                logger.error(f"[Scheduler] Помилка розсилки: {e}")
+                logger.error(f"[Scheduler] Помилка розсилки ігор: {e}")
 
-        # Перевіряємо раз на хвилину
-        await asyncio.sleep(60)
+        # ─── Мем дня ─────────────────────────────────────────────
+        meme_time = MEME_HOUR * 60 + MEME_MINUTE
+        if (now_time >= meme_time
+                and now.date() != last_meme_run):
+            last_meme_run = now.date()
+            try:
+                await run_meme_broadcast(bot)
+            except Exception as e:
+                logger.error(f"[Scheduler] Помилка розсилки мему: {e}")
+
+        # Перевіряємо раз на 30 секунд щоб не пропустити потрібну хвилину
+        await asyncio.sleep(30)
