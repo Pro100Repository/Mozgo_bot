@@ -38,7 +38,7 @@ async def cmd_meme_stats(message: Message):
 
 @router.message(F.photo, F.caption.regexp(r"^/add_meme"))
 async def cmd_add_meme_photo(message: Message):
-    """Адмін надсилає фото з підписом /add_meme — додається в чергу"""
+    """Админ добавляет фото с подписью /add_meme — добавляется в очередьюю"""
     if not is_admin(message.from_user.id):
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
@@ -56,7 +56,7 @@ async def cmd_add_meme_photo(message: Message):
 
 @router.message(Command("add_meme"))
 async def cmd_add_meme_text(message: Message):
-    """Якщо написали /add_meme без фото — підказуємо як правильно"""
+    """Если написали /add_meme без фото — подсказываем как правильно"""
     if not is_admin(message.from_user.id):
         await message.answer("⛔ У вас нет прав для этой команды.")
         return

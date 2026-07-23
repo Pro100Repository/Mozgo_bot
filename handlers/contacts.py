@@ -13,10 +13,12 @@ router = Router()
 # ──────────────────────────────────────────
 # РЕДАКТИРУЙ ЭТИ ДАННЫЕ ПОД СЕБЯ:
 # ──────────────────────────────────────────
-PHONE       = "+38 (050) 000-00-00"        # ← твой номер телефона
-TG_ADMIN    = "organizer_username"          # ← твой Telegram username, без @
-TG_CHANNEL  = "quiz_channel"                # ← username канала, без @ (или полный URL https://t.me/...)
-INSTAGRAM   = "quiz_instagram"              # ← username Instagram, без @ (или полный URL https://instagram.com/...)
+TG_ADMIN    = "kotlettttka"          # ← твой Telegram username, без @
+TG_MSC  = "rudagamespriglosmsc"                # ← username канала, без @ (или полный URL https://t.me/...)
+TG_KRSN  = "rudagameskrgk"
+TG_OBN  = "rudagamesobninsk"
+INSTAGRAM   = "ruda_games"              # ← username Instagram, без @ (или полный URL https://instagram.com/...)
+RUDA   = "https://rudagames.com/"
 # ──────────────────────────────────────────
 
 
@@ -39,10 +41,22 @@ async def show_contacts(message: Message):
             url=build_url(TG_ADMIN, "https://t.me/")
         )])
 
-    if TG_CHANNEL:
+    if TG_MSC:
         buttons_list.append([InlineKeyboardButton(
-            text="📢 Telegram-канал",
-            url=build_url(TG_CHANNEL, "https://t.me/")
+            text="📢 Ruda Games Москва",
+            url=build_url(TG_MSC, "https://t.me/")
+        )])
+
+    if TG_KRSN:
+        buttons_list.append([InlineKeyboardButton(
+            text="📢 Ruda Games Красногорск",
+            url=build_url(TG_KRSN, "https://t.me/")
+        )])
+
+    if TG_OBN:
+        buttons_list.append([InlineKeyboardButton(
+            text="📢 Ruda Games Обнинск",
+            url=build_url(TG_OBN, "https://t.me/")
         )])
 
     if INSTAGRAM:
@@ -51,11 +65,16 @@ async def show_contacts(message: Message):
             url=build_url(INSTAGRAM, "https://instagram.com/")
         )])
 
+    if RUDA:
+        buttons_list.append([InlineKeyboardButton(
+            text="🎮 Ruda Games",
+            url=build_url(RUDA)
+        )])
+
     buttons = InlineKeyboardMarkup(inline_keyboard=buttons_list) if buttons_list else None
 
     await message.answer(
         f"📞 Контакты и соцсети\n\n"
-        f"📱 Телефон: {PHONE}\n"
         f"✉️ Telegram: @{TG_ADMIN}\n\n"
         "Подписывайся на наши страницы, чтобы не пропустить анонсы и новости 👇",
         reply_markup=buttons

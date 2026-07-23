@@ -156,9 +156,9 @@ async def run_meme_broadcast(bot: Bot):
             try:
                 await bot.send_message(
                     admin_id,
-                    f"⚠️ *Мало мемів у черзі!*\n\n"
-                    f"Залишилось: *{remaining}* мем(ів)\n"
-                    f"Поповни чергу через `/add_meme`",
+                    f"⚠️ *Мало мемов в очереди!*\n\n"
+                    f"Осталось: *{remaining}* мема(ов)\n"
+                    f"Пополни очередь через команду `/add_meme`",
                     parse_mode="Markdown"
                 )
             except Exception:
