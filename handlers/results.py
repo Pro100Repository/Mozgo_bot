@@ -8,19 +8,19 @@ from database.db import RESULT_CITIES, RATING_GROUPS, get_rating
 
 router = Router()
 
-# ─── РАНГИ ───────────────────────────────────────────────────────────────────
+# ─── РАНГИ (тимчасово вимкнено) ──────────────────────────────────────────────
 # RANKS = [
-#   (10, "👑 Легенда"),
-#   (5,  "🔥 Мастер"),
-#  (2,  "⭐ Опытный"),
-#    (1,  "🌱 Новичок"),
-#]
+#     (10, "👑 Легенда"),
+#     (5,  "🔥 Мастер"),
+#     (2,  "⭐ Опытный"),
+#     (1,  "🌱 Новичок"),
+# ]
 
-#def get_rank(wins1: int) -> str:
-#    for threshold, rank in RANKS:
-#        if wins1 >= threshold:
-#            return rank
-#    return "🌱 Новичок"
+# def get_rank(wins1: int) -> str:
+#     for threshold, rank in RANKS:
+#         if wins1 >= threshold:
+#             return rank
+#     return "🌱 Новичок"
 
 
 # ─── КЛАВІАТУРИ ──────────────────────────────────────────────────────────────
@@ -98,11 +98,11 @@ async def rt_group_chosen(callback: CallbackQuery):
     leader_w1     = leader_data["w1"]
     leader_w2     = leader_data["w2"]
     leader_w3     = leader_data["w3"]
-    leader_rank   = get_rank(leader_w1)
+    # leader_rank   = get_rank(leader_w1)  # ранги тимчасово вимкнено
 
     leader_text = (
         f"👑 *Лидер — {city} / {group_label}*\n\n"
-        f"{leader_rank} *{leader_name}*\n"
+        f"*{leader_name}*\n"
         f"🥇 {leader_w1} побед   🥈 {leader_w2}   🥉 {leader_w3}"
     )
 
@@ -130,14 +130,18 @@ async def rt_group_chosen(callback: CallbackQuery):
 
     for i, (team_name, tdata) in enumerate(sorted_teams, 1):
         w1, w2, w3 = tdata["w1"], tdata["w2"], tdata["w3"]
-        rank = get_rank(w1)
+        # rank = get_rank(w1)  # ранги тимчасово вимкнено
         pos_icon = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}.")
         text += (
-            f"{pos_icon} *{team_name}*  {rank}\n"
+            f"{pos_icon} *{team_name}*\n"
             f"   🥇 {w1}  🥈 {w2}  🥉 {w3}\n\n"
-
-        'Общий рейтинг команд и их ранги можно просмотреть на сайте <a href="https://rudagames.com">Ruda Games</a>'
         )
+
+    text += (
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Общий рейтинг команд и их ранги можно посмотреть на сайте "
+        "[Ruda Games](https://rudagames.com)"
+    )
 
     back_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="◀️ Назад к типам игр", callback_data=f"rt_city_{city}")
