@@ -68,7 +68,7 @@ async def show_contacts(message: Message):
     if RUDA:
         buttons_list.append([InlineKeyboardButton(
             text="🎮 Ruda Games",
-            url=build_url(RUDA)
+            url=RUDA
         )])
 
     buttons = InlineKeyboardMarkup(inline_keyboard=buttons_list) if buttons_list else None
