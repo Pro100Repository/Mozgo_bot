@@ -1,8 +1,0 @@
-sqlite3 bot.db
-
-.tables                          -- список усіх таблиць
-.schema questions                 -- структура конкретної таблиці
-SELECT * FROM questions LIMIT 10; -- подивитись дані
-DELETE FROM questions WHERE id = 5;   -- видалити конкретний запис
-DELETE FROM memes WHERE id IN (3, 7); -- видалити декілька
-.quit                              -- вийти
