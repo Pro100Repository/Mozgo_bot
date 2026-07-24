@@ -498,24 +498,64 @@ async def delete_game_result(result_id: int) -> bool:
         return cursor.rowcount > 0
 
 
+SERVER_TZ_OFFSET_HOURS = 3  # ← сервер працює в UTC, це +3 години до московського часу
+
+
 async def get_rating(city: str, group_key: str):
     """
-    Повертає рейтинг команд для міста і групи типів ігор.
+    Повертає рейтинг команд для міста і групи типів ігор — ЗА ПОТОЧНИЙ МІСЯЦЬ
+    (за московським часом, а не за часом сервера!).
+
+    Логіка "активного місяця":
+    - Беремо місяць ОСТАННЬОГО доданого результату для цього міста+категорії
+      (з поправкою на московський час).
+    - Якщо останній результат вже з поточного календарного місяця —
+      рахуємо рейтинг тільки за поточний місяць (з 1 числа).
+    - Якщо в поточному місяці ще жодного результату не додавали —
+      показуємо попередній місяць, за який є дані (щоб рейтинг не був
+      порожнім весь час до першого нового результату).
+    - Як тільки з'явиться перший результат нового місяця — він одразу
+      стає "активним місяцем", і старі місяці більше не враховуються
+      (фізично дані в БД лишаються, просто не потрапляють у вибірку).
+
+    ВАЖЛИВО: created_at зберігається в SQLite через datetime('now'), тобто
+    в UTC (= часу сервера). Сервер відстає від Москви на
+    SERVER_TZ_OFFSET_HOURS годин, тому при визначенні місяця ми додаємо
+    цей зсув — інакше результат, внесений одразу після півночі 1-го числа
+    за Москвою, потрапить у БД ще з датою 30/31-го (за серверним часом),
+    і рейтинг не переключиться на новий місяць вчасно.
+
     group_key: 'erudition' або 'tuc_tuc'
-    Повертає: список (team, wins1, wins2, wins3, total_games, photos)
+    Повертає: (sorted_teams, total_games, active_month)
     """
     types = RATING_GROUPS[group_key]["types"]
     placeholders = ",".join("?" * len(types))
+    tz_modifier = f"+{SERVER_TZ_OFFSET_HOURS} hours"
 
     async with aiosqlite.connect(DATABASE_NAME) as db:
-        # Отримуємо всі результати
+        # Визначаємо активний місяць: місяць найсвіжішого результату
+        # для цього міста+категорії (формат 'YYYY-MM'), за московським часом
+        async with db.execute(f"""
+            SELECT strftime('%Y-%m', MAX(created_at), ?)
+            FROM game_results
+            WHERE city = ? AND game_type IN ({placeholders})
+        """, [tz_modifier, city] + types) as cursor:
+            row = await cursor.fetchone()
+
+        active_month = row[0] if row else None
+
+        if not active_month:
+            return [], 0, None  # результатів для цього міста+категорії ще немає
+
+        # Отримуємо результати лише за активний місяць (теж за московським часом)
         async with db.execute(f"""
             SELECT place1_team, place1_photo,
                    place2_team, place2_photo,
                    place3_team, place3_photo
             FROM game_results
             WHERE city = ? AND game_type IN ({placeholders})
-        """, [city] + types) as cursor:
+              AND strftime('%Y-%m', created_at, ?) = ?
+        """, [city] + types + [tz_modifier, active_month]) as cursor:
             rows = await cursor.fetchall()
 
     # Рахуємо статистику по кожній команді
@@ -544,7 +584,7 @@ async def get_rating(city: str, group_key: str):
         reverse=True
     )
 
-    return sorted_teams, total_games
+    return sorted_teams, total_games, active_month
 
 
 async def list_game_results(city: str = None, game_type: str = None, limit: int = 20):
@@ -778,38 +818,4 @@ async def remove_meme_subscriber(user_id: int):
         await db.execute(
             "DELETE FROM meme_subscribers WHERE user_id = ?", (user_id,)
         )
-        await db.commit()
-
-
-# ─── СТАН ПЛАНУВАЛЬНИКА (щоб рестарт бота не дублював розсилки) ─────────────
-
-async def init_scheduler_db():
-    """Створює таблицю для зберігання дат останніх розсилок (переживає рестарт бота)"""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS scheduler_state (
-                key    TEXT PRIMARY KEY,
-                value  TEXT
-            )
-        """)
-        await db.commit()
-
-
-async def get_scheduler_state(key: str):
-    """Повертає збережене значення (наприклад, дату останньої розсилки) або None"""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        async with db.execute(
-            "SELECT value FROM scheduler_state WHERE key = ?", (key,)
-        ) as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else None
-
-
-async def set_scheduler_state(key: str, value: str):
-    """Зберігає значення (upsert)"""
-    async with aiosqlite.connect(DATABASE_NAME) as db:
-        await db.execute("""
-            INSERT INTO scheduler_state (key, value) VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        """, (key, value))
         await db.commit()

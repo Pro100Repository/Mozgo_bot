@@ -1,12 +1,27 @@
 # handlers/results.py — рейтинг команд для користувача
 
 import random
+from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import RESULT_CITIES, RATING_GROUPS, get_rating
 
 router = Router()
+
+MONTH_NAMES = {
+    "01": "Январь", "02": "Февраль", "03": "Март",     "04": "Апрель",
+    "05": "Май",    "06": "Июнь",    "07": "Июль",      "08": "Август",
+    "09": "Сентябрь", "10": "Октябрь", "11": "Ноябрь",  "12": "Декабрь",
+}
+
+
+def format_month(active_month: str | None) -> str:
+    """'2026-07' -> 'Июль 2026'"""
+    if not active_month:
+        return ""
+    year, month = active_month.split("-")
+    return f"{MONTH_NAMES.get(month, month)} {year}"
 
 # ─── РАНГИ (тимчасово вимкнено) ──────────────────────────────────────────────
 # RANKS = [
@@ -79,7 +94,8 @@ async def rt_group_chosen(callback: CallbackQuery):
     city, group_key = callback.data.replace("rt_group_", "").split("|", 1)
 
     group_label = RATING_GROUPS[group_key]["label"]
-    sorted_teams, total_games = await get_rating(city, group_key)
+    sorted_teams, total_games, active_month = await get_rating(city, group_key)
+    month_label = format_month(active_month)
 
     if not sorted_teams:
         await callback.message.edit_text(
@@ -101,7 +117,8 @@ async def rt_group_chosen(callback: CallbackQuery):
     # leader_rank   = get_rank(leader_w1)  # ранги тимчасово вимкнено
 
     leader_text = (
-        f"👑 *Лидер — {city} / {group_label}*\n\n"
+        f"👑 *Лидер — {city} / {group_label}*\n"
+        f"📅 {month_label}\n\n"
         f"*{leader_name}*\n"
         f"🥇 {leader_w1} побед   🥈 {leader_w2}   🥉 {leader_w3}"
     )
@@ -121,7 +138,8 @@ async def rt_group_chosen(callback: CallbackQuery):
     #total_top3 = sum(d["w1"] + d["w2"] + d["w3"] for _, d in sorted_teams)
 
     text = (
-        f"📊 *{city} — {group_label}*\n\n"
+        f"📊 *{city} — {group_label}*\n"
+        f"📅 Рейтинг за: *{month_label}*\n\n"
         f"🎮 Проведено игр: {total_games}\n"
     #    f"🥇 Первых мест разыграно: {total_w1}\n"
     #    f"🏅 Попаданий в топ-3: {total_top3}\n\n"
