@@ -42,4 +42,14 @@ async def cmd_start(message: Message):
 
 @router.message(F.text == "🎉 Акции")
 async def show_promotions(message: Message):
-    await message.answer("Здесь какой-то текст, пёс")
+    await message.answer(
+        "🎉 <b>Акции и бонусы</b>\n\n"
+        "👥 <b>Реферальная программа</b>\n"
+        "Приглашай друзей в игры — за каждого приглашённого\n"
+        "получаешь [бонус]. Твоя ссылка: [ссылка]\n\n"
+        "🎂 <b>День рождения</b>\n"
+        "В свой день рождения получи [что именно] — просто напиши нам в этот день 🎁\n\n"
+        'По всем вопросам пиши <a href="https://t.me/kotlettttka">Администратору</a>',
+        parse_mode="HTML"
+    )
+
