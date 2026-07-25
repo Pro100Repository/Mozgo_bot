@@ -50,6 +50,7 @@ async def show_promotions(message: Message):
         "🎂 <b>День рождения</b>\n"
         "В свой день рождения получи [что именно] — просто напиши нам в этот день 🎁\n\n"
         'По всем вопросам пиши <a href="https://t.me/kotlettttka">Администратору</a>',
-        parse_mode="HTML"
+        parse_mode="HTML",
+        disable_web_page_preview=True
     )
 
