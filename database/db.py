@@ -59,7 +59,8 @@ async def init_db():
             )
         """)
 
-        # Таблиця результатів квізу
+        # Таблиця результатів квізу (старий лог — по рядку на кожне проходження).
+        # Залишена для сумісності/міграції, нові записи сюди більше не пишуться.
         await db.execute("""
             CREATE TABLE IF NOT EXISTS quiz_results (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +70,23 @@ async def init_db():
                 correct     INTEGER DEFAULT 0,
                 total       INTEGER DEFAULT 0,
                 played_at   TEXT DEFAULT (datetime('now'))
+            )
+        """)
+
+        # Агрегована статистика квізу — один рядок на (user_id, category),
+        # оновлюється (UPSERT) при кожному проходженні замість додавання нового рядка.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS quiz_stats (
+                user_id         INTEGER NOT NULL,
+                category        TEXT NOT NULL,
+                username        TEXT DEFAULT '',
+                best_correct    INTEGER DEFAULT 0,
+                best_total      INTEGER DEFAULT 0,
+                attempts        INTEGER DEFAULT 0,
+                last_correct    INTEGER DEFAULT 0,
+                last_total      INTEGER DEFAULT 0,
+                last_played_at  TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (user_id, category)
             )
         """)
 
@@ -106,6 +124,9 @@ async def migrate_db():
             await db.execute("ALTER TABLE games ADD COLUMN price TEXT DEFAULT ''")
             await db.commit()
             print("✅ Миграция: добавлено поле price")
+
+    # Одноразова міграція старого лога quiz_results у агреговану quiz_stats
+    await migrate_quiz_results_to_stats()
 
 
 # ─── ІГРИ ───────────────────────────────
@@ -392,23 +413,83 @@ async def list_questions(category: str):
 
 async def save_quiz_result(user_id: int, username: str, category: str,
                            correct: int, total: int):
+    """
+    Зберігає результат проходження квізу. Замість нового рядка на кожне
+    проходження — оновлює один агрегований рядок (user_id, category):
+    рекорд (best_correct/best_total), кількість спроб, останній результат.
+    """
     async with aiosqlite.connect(DATABASE_NAME) as db:
         await db.execute("""
-            INSERT INTO quiz_results (user_id, username, category, correct, total)
-            VALUES (?, ?, ?, ?, ?)
-        """, (user_id, username, category, correct, total))
+            INSERT INTO quiz_stats
+                (user_id, category, username, best_correct, best_total,
+                 attempts, last_correct, last_total, last_played_at)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, datetime('now'))
+            ON CONFLICT(user_id, category) DO UPDATE SET
+                username       = excluded.username,
+                best_correct   = MAX(best_correct, excluded.best_correct),
+                best_total     = CASE WHEN excluded.best_correct > best_correct
+                                       THEN excluded.best_total ELSE best_total END,
+                attempts       = attempts + 1,
+                last_correct   = excluded.last_correct,
+                last_total     = excluded.last_total,
+                last_played_at = excluded.last_played_at
+        """, (user_id, category, username, correct, total, correct, total))
         await db.commit()
 
 
 async def get_user_quiz_stats(user_id: int, category: str):
-    """Найкращий результат користувача в категорії"""
+    """Рекорд і кількість спроб користувача в категорії: (best_correct, best_total, attempts)"""
     async with aiosqlite.connect(DATABASE_NAME) as db:
         async with db.execute("""
-            SELECT MAX(correct), total, COUNT(*)
-            FROM quiz_results
+            SELECT best_correct, best_total, attempts
+            FROM quiz_stats
             WHERE user_id = ? AND category = ?
         """, (user_id, category)) as cursor:
             return await cursor.fetchone()
+
+
+async def migrate_quiz_results_to_stats():
+    """
+    Одноразова міграція: агрегує старі записи quiz_results (по рядку на кожне
+    проходження) у нову таблицю quiz_stats (по рядку на user_id+category).
+    Безпечна для повторного виклику — якщо quiz_stats вже не порожня, нічого не робить.
+    """
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("SELECT COUNT(*) FROM quiz_stats") as cursor:
+            row = await cursor.fetchone()
+            if row and row[0] > 0:
+                return  # вже мігровано — пропускаємо
+
+        async with db.execute("SELECT COUNT(*) FROM quiz_results") as cursor:
+            row = await cursor.fetchone()
+            if not row or row[0] == 0:
+                return  # немає старих даних для міграції
+
+        await db.execute("""
+            INSERT INTO quiz_stats
+                (user_id, category, username, best_correct, best_total,
+                 attempts, last_correct, last_total, last_played_at)
+            SELECT
+                qr.user_id,
+                qr.category,
+                MAX(qr.username),
+                MAX(qr.correct),
+                (SELECT total FROM quiz_results q2
+                 WHERE q2.user_id = qr.user_id AND q2.category = qr.category
+                 ORDER BY q2.correct DESC, q2.id DESC LIMIT 1),
+                COUNT(*),
+                (SELECT correct FROM quiz_results q3
+                 WHERE q3.user_id = qr.user_id AND q3.category = qr.category
+                 ORDER BY q3.played_at DESC, q3.id DESC LIMIT 1),
+                (SELECT total FROM quiz_results q4
+                 WHERE q4.user_id = qr.user_id AND q4.category = qr.category
+                 ORDER BY q4.played_at DESC, q4.id DESC LIMIT 1),
+                MAX(qr.played_at)
+            FROM quiz_results qr
+            GROUP BY qr.user_id, qr.category
+        """)
+        await db.commit()
+        print("✅ Міграція quiz_results → quiz_stats виконана")
 
 
 # ─── РЕЗУЛЬТАТИ ІГОР (НОВА СИСТЕМА) ──────────────────────────────────────────
