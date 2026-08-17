@@ -1,10 +1,30 @@
 # handlers/start.py — главное меню бота
 
 from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import (
+    Message, ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton
+)
 from aiogram.filters import CommandStart
 
 router = Router()
+
+# ─── ФОТОАЛЬБОМЫ ПО ГОРОДАМ ──────────────────────────────────────────────────
+# Замени ссылки на реальные фотоальбомы в соцсетях для каждого города.
+PHOTO_ALBUMS = {
+    "Москва":       "https://vk.com/album-000000000_000000000",
+    "Красногорск":  "https://vk.com/album-000000000_000000001",
+    "Истра":        "https://vk.com/album-000000000_000000002",
+    "Обнинск":      "https://vk.com/album-000000000_000000003",
+}
+
+
+def photo_albums_kb() -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text=f"🏙 {city}", url=link)]
+        for city, link in PHOTO_ALBUMS.items()
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def main_menu():
@@ -14,7 +34,7 @@ def main_menu():
             [KeyboardButton(text="🎉 Акции"),                KeyboardButton(text="❓ FAQ")],
             [KeyboardButton(text="🎯 Попробуй свои силы"),   KeyboardButton(text="📞 Контакты")],
             [KeyboardButton(text="🏅 Лидеры месяца"),        KeyboardButton(text="😂 Мем дня")],
-            [KeyboardButton(text="🔔 Подписка на игры")],
+            [KeyboardButton(text="📸 Фотоальбомы"),          KeyboardButton(text="🔔 Подписка на игры")],
         ],
         resize_keyboard=True
     )
@@ -28,7 +48,7 @@ async def cmd_start(message: Message):
         "Я бот квиз-сообщества *Ruda Games*. Здесь ты найдёшь:\n"
         "📅 Игры • 🎉 Акции • 📖 Правила\n"
         "🏅 Рейтинг • ❓ FAQ • 📞 Контакты\n"
-        "🎯 Квиз • 🔔 Подписка на игры\n\n"        
+        "🎯 Квиз • 📸 Фотоальбомы • 🔔 Подписка на игры\n\n"        
         "Выбери что тебя интересует 👇",
         reply_markup=main_menu(),
         parse_mode="Markdown"
@@ -45,5 +65,15 @@ async def show_promotions(message: Message):
         "Для участия в акции предъявите паспорт администратору на игре.",
         parse_mode="HTML",
         disable_web_page_preview=True
+    )
+
+
+@router.message(F.text == "📸 Фотоальбомы")
+async def show_photo_albums(message: Message):
+    await message.answer(
+        "📸 <b>Фотоальбомы с игр</b>\n\n"
+        "Выбери город, чтобы перейти к альбому в соцсети 👇",
+        reply_markup=photo_albums_kb(),
+        parse_mode="HTML"
     )
 
