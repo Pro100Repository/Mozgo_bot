@@ -32,9 +32,9 @@ def main_menu():
         keyboard=[
             [KeyboardButton(text="📅 Предстоящие игры"),     KeyboardButton(text="📖 Правила")],
             [KeyboardButton(text="🎉 Акции"),                KeyboardButton(text="❓ FAQ")],
-            [KeyboardButton(text="🎯 Попробуй свои силы"),   KeyboardButton(text="📞 Контакты")],
-            [KeyboardButton(text="🏅 Лидеры месяца"),        KeyboardButton(text="😂 Мем дня")],
-            [KeyboardButton(text="📸 Фотоальбомы"),          KeyboardButton(text="🔔 Подписка на игры")],
+            [KeyboardButton(text="📸 Фотоальбомы"),          KeyboardButton(text="📞 Контакты")],
+            [KeyboardButton(text="🎯 Попробуй свои силы"),   KeyboardButton(text="🏅 Лидеры месяца")],
+            [KeyboardButton(text="😂 Мем дня"),              KeyboardButton(text="🔔 Подписка на игры")],
         ],
         resize_keyboard=True
     )
