@@ -12,10 +12,10 @@ router = Router()
 # ─── ФОТОАЛЬБОМЫ ПО ГОРОДАМ ──────────────────────────────────────────────────
 # Замени ссылки на реальные фотоальбомы в соцсетях для каждого города.
 PHOTO_ALBUMS = {
-    "Москва":       "https://vk.com/album-000000000_000000000",
-    "Красногорск":  "https://vk.com/album-000000000_000000001",
-    "Истра":        "https://vk.com/album-000000000_000000002",
-    "Обнинск":      "https://vk.com/album-000000000_000000003",
+    "Москва":       "https://vk.ru/albums-126335374",
+    "Красногорск":  "https://vk.ru/albums-163158280",
+    "Истра":        "https://vk.ru/albums-167360648",
+    "Обнинск":      "https://vk.ru/albums-167360403",
 }
 
 
@@ -72,7 +72,7 @@ async def show_promotions(message: Message):
 async def show_photo_albums(message: Message):
     await message.answer(
         "📸 <b>Фотоальбомы с игр</b>\n\n"
-        "Выбери город, чтобы перейти к альбому в соцсети 👇",
+        "Выбери город, чтобы перейти к альбому в нашей группе в ВК 👇",
         reply_markup=photo_albums_kb(),
         parse_mode="HTML"
     )

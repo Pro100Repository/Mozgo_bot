@@ -1,4 +1,4 @@
-# scheduler.py — автоматична розсилка сповіщень про ігри та мем дня
+# scheduler.py — автоматична розсилка сповіщень про ігри та мем недели
 #
 # НАЛАШТУВАННЯ ЧАСУ РОЗСИЛКИ:
 # ──────────────────────────────────────────────────────────────────
@@ -6,8 +6,9 @@ BROADCAST_HOUR   = 9   # ← година розсилки ігор (за час
 BROADCAST_MINUTE = 0    # ← хвилина розсилки ігор
 DAYS_BEFORE_GAME = 1    # ← за скільки днів до гри надсилати сповіщення
 
-MEME_HOUR   = 9        # ← година відправки мему дня
-MEME_MINUTE = 0         # ← хвилина відправки мему дня
+MEME_WEEKDAY = 0        # ← день тижня для мема недели: 0 = Понедельник, 1 = Вторник, ... 6 = Воскресенье
+MEME_HOUR   = 12        # ← година відправки мему тижня
+MEME_MINUTE = 0         # ← хвилина відправки мему тижня
                         #   (можна зробити інший час ніж розсилка ігор,
                         #    наприклад MEME_HOUR=10 щоб мем о 10:00, ігри о 12:00)
 
@@ -111,6 +112,7 @@ async def run_daily_broadcast(bot: Bot):
 async def run_meme_broadcast(bot: Bot):
     """
     Надсилає один мем всім підписникам і видаляє його з черги.
+    Викликається щотижня (у день MEME_WEEKDAY).
     Якщо мемів мало — надсилає попередження адміну.
     """
     meme = await get_next_meme()
@@ -122,7 +124,7 @@ async def run_meme_broadcast(bot: Bot):
                 await bot.send_message(
                     admin_id,
                     "⚠️ *Очередь мемов пустая!*\n\n"
-                    "Мем на сегодня не будет отправлен.\n"
+                    "Мем недели не будет отправлен.\n"
                     "Добавь новые мемы через команду `/add_meme`",
                     parse_mode="Markdown"
                 )
@@ -179,11 +181,12 @@ async def scheduler_loop(bot: Bot):
     Фоновий цикл — чекає потрібного часу і запускає розсилки.
     Перевіряє час щохвилини.
     """
+    WEEKDAY_NAMES = ["понедельник", "вторник", "среду", "четверг", "пятницу", "субботу", "воскресенье"]
     logger.info(
         f"[Scheduler] Запущено.\n"
         f"  Ігри: щодня о {BROADCAST_HOUR:02d}:{BROADCAST_MINUTE:02d}, "
         f"за {DAYS_BEFORE_GAME} день до гри\n"
-        f"  Мем дня: щодня о {MEME_HOUR:02d}:{MEME_MINUTE:02d}"
+        f"  Мем недели: щотижня в {WEEKDAY_NAMES[MEME_WEEKDAY]} о {MEME_HOUR:02d}:{MEME_MINUTE:02d}"
     )
 
     last_game_run = await _load_last_run_date("last_game_broadcast")
@@ -205,9 +208,10 @@ async def scheduler_loop(bot: Bot):
             except Exception as e:
                 logger.error(f"[Scheduler] Помилка розсилки ігор: {e}")
 
-        # ─── Мем дня ─────────────────────────────────────────────
+        # ─── Мем недели ──────────────────────────────────────────
         meme_time = MEME_HOUR * 60 + MEME_MINUTE
-        if (now_time >= meme_time
+        if (now.weekday() == MEME_WEEKDAY
+                and now_time >= meme_time
                 and now.date() != last_meme_run):
             last_meme_run = now.date()
             await set_scheduler_state("last_meme_broadcast", last_meme_run.isoformat())

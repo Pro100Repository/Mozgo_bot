@@ -511,7 +511,7 @@ RATING_GROUPS = {
         "types": ["mozgoboynya"],
         # "types": ["mozgoboynya", "kvizmashina"],  # ⏸ полный список с Квизмашиной — раскомментируй и удали строку выше, чтобы вернуть
     },
-    "tuc_tuc":   {"label": "🎵 Туц Туц QUIZ",  "types": ["tuc_tuc"]},
+    "tuc_tuc":   {"label": "💃 Туц Туц QUIZ",  "types": ["tuc_tuc"]},
 }
 
 
