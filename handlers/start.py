@@ -46,9 +46,9 @@ async def cmd_start(message: Message):
     await message.answer(
         f"👋 Привет, {message.from_user.first_name}!\n\n"
         "Я бот квиз-сообщества *Ruda Games*. Здесь ты найдёшь:\n"
-        "📅 Игры • 🎉 Акции • 📖 Правила\n"
-        "🏅 Рейтинг • ❓ FAQ • 📞 Контакты\n"
-        "🎯 Квиз • 📸 Фотоальбомы • 🔔 Подписка на игры\n\n"        
+        "📅 Игры • 📖 Правила • 🎉 Акции \n"
+        "❓ FAQ • 📸 Фотоальбомы • 📞 Контакты \n"
+        "🎯 Квиз • 🏅 Рейтинг • 🔔 Подписка на игры и мемы\n\n"        
         "Выбери что тебя интересует 👇",
         reply_markup=main_menu(),
         parse_mode="Markdown"

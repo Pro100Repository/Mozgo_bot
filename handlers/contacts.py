@@ -60,7 +60,7 @@ def main_contacts_keyboard() -> InlineKeyboardMarkup:
 
     if RUDA:
         buttons_list.append([InlineKeyboardButton(
-            text="🎮 Оффициальный сайт Ruda Games",
+            text="🎮 Официальный сайт Ruda Games",
             url=RUDA
         )])
 

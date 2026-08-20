@@ -345,7 +345,11 @@ async def get_records():
 
 # ─── КВІЗ ────────────────────────────────
 
-CATEGORIES = ["Классика", "Туц Туц Quiz", "Квизмашина"]
+CATEGORIES = [
+    "Классика",
+    "Туц Туц Quiz",
+    # "Квизмашина",  # ⏸ временно убрана из квиза — раскомментируй строку, чтобы вернуть
+]
 
 # Типи питань
 Q_TEXT  = "text"    # текст + 4 варіанти
@@ -497,12 +501,16 @@ async def migrate_quiz_results_to_stats():
 RESULT_CITIES    = ["Москва «бар Liberty»", "Красногорск", "Истра", "Обнинск"]
 RESULT_GAME_TYPES = {
     "mozgoboynya": "Мозгобойня",
-    "kvizmashina": "Квизмашина",
+    # "kvizmashina": "Квизмашина",  # ⏸ временно убрана из админки — раскомментируй, чтобы вернуть
     "tuc_tuc":     "Туц Туц QUIZ",
 }
 # Групи для користувача
 RATING_GROUPS = {
-    "erudition": {"label": "🧠 Эрудиция", "types": ["mozgoboynya", "kvizmashina"]},
+    "erudition": {
+        "label": "🧠 Мозгобойня",
+        "types": ["mozgoboynya"],
+        # "types": ["mozgoboynya", "kvizmashina"],  # ⏸ полный список с Квизмашиной — раскомментируй и удали строку выше, чтобы вернуть
+    },
     "tuc_tuc":   {"label": "🎵 Туц Туц QUIZ",  "types": ["tuc_tuc"]},
 }
 
