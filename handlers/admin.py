@@ -5,7 +5,7 @@ from aiogram.types import Message
 from aiogram.filters import Command
 
 from config import ADMIN_IDS
-from database.db import add_result, get_subscription_stats, get_total_subscribers_count
+from database.db import add_result_g, get_subscription_stats, get_total_subscribers_count
 
 router = Router()
 
@@ -24,22 +24,22 @@ def is_admin(user_id: int) -> bool:
 # ─────────────────────────────────────────
 # ─────────────────────────────────────────
 # ДОБАВИТЬ РЕЗУЛЬТАТ
-# Формат: /add_result_new 
+# Формат: /add_result
 # ─────────────────────────────────────────
-@router.message(Command("add_result"))
-async def cmd_add_result(message: Message):
+@router.message(Command("add_result_g"))
+async def cmd_add_result_g(message: Message):
     if not is_admin(message.from_user.id):
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
 
-    args = message.text.replace("/add_result", "").strip()
+    args = message.text.replace("/add_result_g", "").strip()
 
     if not args:
         await message.answer(
             "📝 *Формат команды:*\n\n"
-            "`/add_result Название игры | Дата | Команда | Место | Баллы`\n\n"
+            "`/add_result_g Название игры | Дата | Команда | Место | Баллы`\n\n"
             "*Пример:*\n"
-            "`/add_result Квиз №4 | 15.06.2025 | Умники | 1 | 42.5`",
+            "`/add_result_g Квиз №4 | 15.06.2025 | Умники | 1 | 42.5`",
             parse_mode="Markdown"
         )
         return
@@ -49,7 +49,7 @@ async def cmd_add_result(message: Message):
     if len(parts) < 5:
         await message.answer(
             "❌ Неверный формат. Нужно 5 полей через `|`\n\n"
-            "Пример: `/add_result Квиз №4 | 15.06.2025 | Умники | 1 | 42.5`",
+            "Пример: `/add_result_g Квиз №4 | 15.06.2025 | Умники | 1 | 42.5`",
             parse_mode="Markdown"
         )
         return
@@ -65,7 +65,7 @@ async def cmd_add_result(message: Message):
         await message.answer("❌ Место должно быть целым числом, баллы — числом (можно с точкой).")
         return
 
-    await add_result(game_title, game_date, team_name, place, score)
+    await add_result_g(game_title, game_date, team_name, place, score)
 
     medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(place, f"{place}-е место")
     await message.answer(
@@ -126,7 +126,7 @@ async def cmd_admin_help(message: Message):
         "`/del_game ID` — удалить игру где *ID это номер игры который в списке*\n"
         "`/add_photo ID` - 📷 прикрепить фото к игре (Фото и команда *отправляется одним сообщением*. *Фото+подпись(/add_photo ID)*\n\n"
         "🏆 *Результаты игр:*\n"
-        "`/add_result_new` — добавить результат (пошаговая форма, *только для 1-3 мест*)\n"
+        "`/add_result` — добавить результат (пошаговая форма, *только для 1-3 мест*)\n"
         "`/list_results` — список результатов\n"
         "`/edit_result ID` — редактировать результат, где ID это номер результата из списка\n"
         "`/del_result ID` — удалить результат\n\n"

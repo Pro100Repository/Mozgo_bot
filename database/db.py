@@ -275,7 +275,7 @@ async def get_results(limit: int = 10):
             return await cursor.fetchall()
 
 
-async def add_result(game_title, game_date, team_name, place, score):
+async def add_result_g(game_title, game_date, team_name, place, score):
     async with aiosqlite.connect(DATABASE_NAME) as db:
         await db.execute(
             "INSERT INTO results (game_title, game_date, team_name, place, score) VALUES (?, ?, ?, ?, ?)",

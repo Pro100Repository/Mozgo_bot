@@ -64,8 +64,8 @@ def skip_photo_kb(cb: str):
 
 # ─── СТАРТ ────────────────────────────────────────────────────────────────────
 
-@router.message(Command("add_result_new"))
-async def cmd_add_result_new(message: Message, state: FSMContext):
+@router.message(Command("add_result"))
+async def cmd_add_result(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         await message.answer("⛔ У вас нет прав для этой команды.")
         return
