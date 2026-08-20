@@ -2,7 +2,7 @@
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -71,11 +71,21 @@ async def cmd_add_result_new(message: Message, state: FSMContext):
         return
     await state.clear()
     await message.answer(
-        "🏆 *Добавление результата игры*\n\nШаг 1. Выбери город:",
+        "🏆 *Добавление результата игры*\n"
+        "_В любой момент можно написать /stop, чтобы отменить добавление._\n\n"
+        "Шаг 1. Выбери город:",
         reply_markup=cities_kb(),
         parse_mode="Markdown"
     )
     await state.set_state(AddResultForm.choose_city)
+
+
+# ─── ОСТАНОВКА ФОРМИ (на любом шаге) ─────────────────────────────────────────
+
+@router.message(Command("stop"), StateFilter(AddResultForm))
+async def ar_stop(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("🛑 Добавление результата отменено. Ничего не сохранено в базу.")
 
 
 # ─── ШАГ 1: МІСТО ─────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -68,11 +68,20 @@ async def cmd_add_game(message: Message, state: FSMContext):
 
     await state.clear()
     await message.answer(
-        "🎮 *Добавление новой игры*\n\n"
+        "🎮 *Добавление новой игры*\n"
+        "_В любой момент можно написать /stop, чтобы отменить добавление._\n\n"
         "Шаг 1. Напиши *название игры*:",
         parse_mode="Markdown"
     )
     await state.set_state(AddGameForm.enter_title)
+
+
+# ─── ОСТАНОВКА ФОРМИ (на любом шаге) ─────────────────────────────────────────
+
+@router.message(Command("stop"), StateFilter(AddGameForm))
+async def ag_stop(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("🛑 Добавление игры отменено. Ничего не сохранено в базу.")
 
 
 @router.message(AddGameForm.enter_title)
