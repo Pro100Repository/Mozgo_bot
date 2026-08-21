@@ -34,7 +34,7 @@ def main_menu():
             [KeyboardButton(text="🎉 Акции"),                KeyboardButton(text="❓ FAQ")],
             [KeyboardButton(text="📸 Фотоальбомы"),          KeyboardButton(text="📞 Контакты")],
             [KeyboardButton(text="🎯 Попробуй свои силы"),   KeyboardButton(text="🏅 Лидеры месяца")],
-            [KeyboardButton(text="😂 Мем дня"),              KeyboardButton(text="🔔 Подписка на игры")],
+            [KeyboardButton(text="😂 Мем недели"),           KeyboardButton(text="🔔 Подписка на игры")],
         ],
         resize_keyboard=True
     )
