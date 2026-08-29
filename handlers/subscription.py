@@ -3,7 +3,7 @@
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from config import SUBSCRIPTION_ADMIN_ID
+from config import SUBSCRIPTION_ADMIN_IDS
 from database.db import (
     RESULT_CITIES, subscribe, unsubscribe,
     get_user_subscriptions
@@ -31,9 +31,9 @@ async def subscription_kb(user_id: int) -> InlineKeyboardMarkup:
 
 
 async def notify_admin_new_subscription(bot: Bot, user, city: str):
-    """Надсилає конкретному адміну (SUBSCRIPTION_ADMIN_ID) сповіщення про нову підписку."""
-    if not SUBSCRIPTION_ADMIN_ID:
-        return  # ID адміна не задано в .env — пропускаем без ошибки
+    """Надсилає ВСІМ адмінам зі списку SUBSCRIPTION_ADMIN_IDS сповіщення про нову підписку."""
+    if not SUBSCRIPTION_ADMIN_IDS:
+        return  # ID адмінів не задано в .env — пропускаем без ошибки
 
     full_name = user.full_name or user.first_name or "—"
     username_part = f"@{user.username}" if user.username else "—"
@@ -45,10 +45,11 @@ async def notify_admin_new_subscription(bot: Bot, user, city: str):
         f"🆔 ID: `{user.id}`\n"
         f"🏙 Город: {city}"
     )
-    try:
-        await bot.send_message(SUBSCRIPTION_ADMIN_ID, text, parse_mode="Markdown")
-    except Exception as e:
-        print(f"⚠️ Не удалось отправить уведомление админу о подписке: {e}")
+    for admin_id in SUBSCRIPTION_ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, text, parse_mode="Markdown")
+        except Exception as e:
+            print(f"⚠️ Не удалось отправить уведомление админу {admin_id} о подписке: {e}")
 
 
 # ─── ТЕКСТ МЕНЮ ПІДПИСКИ (спільний для обох точок входу) ─────────────────────

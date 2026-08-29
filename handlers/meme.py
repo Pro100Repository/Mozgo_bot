@@ -3,7 +3,7 @@
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from config import SUBSCRIPTION_ADMIN_ID
+from config import SUBSCRIPTION_ADMIN_IDS
 from database.db import (
     meme_subscribe, meme_unsubscribe,
     is_meme_subscribed
@@ -46,8 +46,8 @@ async def show_meme_subscription(message: Message):
 
 
 async def notify_admin_meme_subscription(bot: Bot, user):
-    """Сповіщення адміну про нову підписку на мем недели"""
-    if not SUBSCRIPTION_ADMIN_ID:
+    """Сповіщення ВСІХ адмінів зі списку SUBSCRIPTION_ADMIN_IDS про нову підписку на мем недели"""
+    if not SUBSCRIPTION_ADMIN_IDS:
         return
 
     full_name     = user.full_name or user.first_name or "—"
@@ -59,10 +59,11 @@ async def notify_admin_meme_subscription(bot: Bot, user):
         f"🔗 Username: {username_part}\n"
         f"🆔 ID: `{user.id}`"
     )
-    try:
-        await bot.send_message(SUBSCRIPTION_ADMIN_ID, text, parse_mode="Markdown")
-    except Exception as e:
-        print(f"⚠️ Не удалось отправить уведомление админу о подписке на мем: {e}")
+    for admin_id in SUBSCRIPTION_ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, text, parse_mode="Markdown")
+        except Exception as e:
+            print(f"⚠️ Не удалось отправить уведомление админу {admin_id} о подписке на мем: {e}")
 
 
 @router.callback_query(F.data == "meme_sub")
