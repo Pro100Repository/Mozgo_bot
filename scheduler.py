@@ -2,8 +2,8 @@
 #
 # НАЛАШТУВАННЯ ЧАСУ РОЗСИЛКИ:
 # ──────────────────────────────────────────────────────────────────
-BROADCAST_HOUR   = 9   # ← година розсилки ігор (за часом сервера -3 до мск)
-BROADCAST_MINUTE = 0    # ← хвилина розсилки ігор
+BROADCAST_HOUR   = 9   # ← година розсилки нагадувань "за N днів до гри" (за часом сервера -3 до мск)
+BROADCAST_MINUTE = 0    # ← хвилина розсилки нагадувань "за N днів до гри"
 
 # За скільки днів до гри надсилати нагадування — користувач сам обирає
 # один чи кілька варіантів у меню "🔔 Подписка на игры" -> "⏰ Настроить напоминания"
@@ -13,7 +13,13 @@ DAYS_BEFORE_PREFS = {
     "7d": 7,
 }
 
-REGISTRATION_REMINDER_DAYS = 14  # ← через скільки днів після додавання гри надсилати "reg14d"-нагадування
+# "Реєстрація" умовно відкривається за REGISTRATION_DAYS_BEFORE_EVENT днів до гри.
+# Якщо гру додали пізніше цієї дати - нагадування шлеться в день додавання,
+# а не заднім числом. Відправляється о REG_REMINDER_HOUR:REG_REMINDER_MINUTE,
+# незалежно від того, о котрій годині гру фактично додали в бота.
+REGISTRATION_DAYS_BEFORE_EVENT = 14
+REG_REMINDER_HOUR   = 12
+REG_REMINDER_MINUTE = 0
 
 MEME_WEEKDAY = 0        # ← день тижня для мема недели: 0 = Понедельник, 1 = Вторник, ... 6 = Воскресенье
 MEME_HOUR    = 9        # ← година відправки мему тижня
@@ -120,20 +126,15 @@ async def run_daily_broadcast(bot: Bot):
 
     logger.info(f"[Scheduler] Розсилка ігор завершена. Надіслано: {total_sent}")
 
-    # Окремо — нагадування "через N днів після відкриття реєстрації"
-    try:
-        await run_registration_reminder(bot)
-    except Exception as e:
-        logger.error(f"[Scheduler] Помилка нагадування про реєстрацію: {e}")
-
 
 async def run_registration_reminder(bot: Bot):
     """
-    Надсилає нагадування підписникам з типом 'reg14d', для ігор, з моменту
-    додавання яких пройшло REGISTRATION_REMINDER_DAYS днів. Кожному користувачу
-    по кожній грі — не більше одного разу (дедуплікація через registration_notified).
+    Надсилає нагадування підписникам з типом 'reg14d' — окремо для кожної гри,
+    для якої настав день "відкриття реєстрації" (див. get_games_for_registration_reminder).
+    Кожному користувачу по кожній грі — не більше одного разу (дедуплікація
+    через registration_notified). Викликається щодня о REG_REMINDER_HOUR:REG_REMINDER_MINUTE.
     """
-    games = await get_games_for_registration_reminder(REGISTRATION_REMINDER_DAYS)
+    games = await get_games_for_registration_reminder(REGISTRATION_DAYS_BEFORE_EVENT)
     if not games:
         return
 
@@ -146,8 +147,7 @@ async def run_registration_reminder(bot: Bot):
             continue
 
         text = (
-            f"📝 *Напоминание о регистрации!*\n\n"
-            f"Прошло {REGISTRATION_REMINDER_DAYS} дней с момента открытия регистрации на игру:\n\n"
+            f"📝 *Открыта регистрация на игру!*\n\n"
             f"🎯 {title}\n"
             f"📆 {date}\n"
             f"🏙 Город: {city}\n"
@@ -173,7 +173,7 @@ async def run_registration_reminder(bot: Bot):
 
             await asyncio.sleep(0.05)
 
-    logger.info(f"[RegReminder] Нагадування про реєстрацію надіслано: {sent}")
+    logger.info(f"[RegReminder] Нагадування про відкриття реєстрації надіслано: {sent}")
 
 
 async def run_meme_broadcast(bot: Bot):
@@ -253,11 +253,14 @@ async def scheduler_loop(bot: Bot):
     logger.info(
         f"[Scheduler] Запущено.\n"
         f"  Ігри: щодня о {BROADCAST_HOUR:02d}:{BROADCAST_MINUTE:02d}, "
-        f"варіанти нагадувань: {days_list} до гри + reg{REGISTRATION_REMINDER_DAYS}d\n"
+        f"варіанти нагадувань: {days_list} до гри\n"
+        f"  Реєстрація (за {REGISTRATION_DAYS_BEFORE_EVENT} дн. до гри): "
+        f"щодня о {REG_REMINDER_HOUR:02d}:{REG_REMINDER_MINUTE:02d}\n"
         f"  Мем недели: щотижня в {WEEKDAY_NAMES[MEME_WEEKDAY]} о {MEME_HOUR:02d}:{MEME_MINUTE:02d}"
     )
 
     last_game_run = await _load_last_run_date("last_game_broadcast")
+    last_reg_run  = await _load_last_run_date("last_reg_reminder")
     last_meme_run = await _load_last_run_date("last_meme_broadcast")
 
     while True:
@@ -265,7 +268,7 @@ async def scheduler_loop(bot: Bot):
 
         now_time = now.hour * 60 + now.minute  # поточний час в хвилинах
 
-        # ─── Розсилка ігор ───────────────────────────────────────
+        # ─── Розсилка ігор (за N днів до гри) ─────────────────────
         game_time = BROADCAST_HOUR * 60 + BROADCAST_MINUTE
         if (now_time >= game_time
                 and now.date() != last_game_run):
@@ -275,6 +278,17 @@ async def scheduler_loop(bot: Bot):
                 await run_daily_broadcast(bot)
             except Exception as e:
                 logger.error(f"[Scheduler] Помилка розсилки ігор: {e}")
+
+        # ─── Нагадування про відкриття реєстрації (окремий час — 12:00) ──
+        reg_time = REG_REMINDER_HOUR * 60 + REG_REMINDER_MINUTE
+        if (now_time >= reg_time
+                and now.date() != last_reg_run):
+            last_reg_run = now.date()
+            await set_scheduler_state("last_reg_reminder", last_reg_run.isoformat())
+            try:
+                await run_registration_reminder(bot)
+            except Exception as e:
+                logger.error(f"[Scheduler] Помилка нагадування про реєстрацію: {e}")
 
         # ─── Мем недели ──────────────────────────────────────────
         meme_time = MEME_HOUR * 60 + MEME_MINUTE

@@ -915,23 +915,61 @@ async def get_subscribers_by_pref(city: str, pref_code: str) -> list:
 
 # ─── НАГАДУВАННЯ "ЧЕРЕЗ N ДНІВ ПІСЛЯ ВІДКРИТТЯ РЕЄСТРАЦІЇ" ────────────────────
 
-async def get_games_for_registration_reminder(days_after: int = 14) -> list:
+async def get_games_for_registration_reminder(days_before_event: int = 14) -> list:
     """
-    Ігри, з моменту додавання (created_at) яких пройшло вже days_after днів,
-    і які ще не відбулися. Ігри без created_at (додані до міграції) не потрапляють
-    сюди — для них немає даних, коли саме "відкрилась реєстрація".
+    Реєстрація на гру умовно відкривається за days_before_event днів до самої гри.
+    Ця функція повертає ігри, для яких настав день нагадування:
+
+    - Звичайний випадок: гру додали задовго до дати — нагадування шлеться
+      рівно за days_before_event днів до гри (в день "відкриття реєстрації").
+    - Гру додали пізніше, ніж за days_before_event днів до події (тобто
+      "реєстрація" на момент додавання вже мала бути відкрита) — нагадування
+      шлеться в день додавання гри (а не заднім числом раніше).
+
+    Порівняння йде по ДАТІ (без часу) — конкретний час відправки (напр. 12:00)
+    контролює виклик у scheduler.py, а не ця функція.
+    Ігри без created_at (додані до міграції) або без event_datetime пропускаються.
     """
-    threshold = (datetime.now() - timedelta(days=days_after)).strftime("%Y-%m-%d %H:%M:%S")
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     async with aiosqlite.connect(DATABASE_NAME) as db:
         async with db.execute("""
-            SELECT id, title, date, location, price, registration_link, city, photo_id
+            SELECT id, title, date, location, price, registration_link, city, photo_id,
+                   created_at, event_datetime
             FROM games
             WHERE created_at IS NOT NULL AND created_at != ''
-              AND created_at <= ?
-              AND (event_datetime IS NULL OR event_datetime = '' OR event_datetime > ?)
-        """, (threshold, now_str)) as cursor:
-            return await cursor.fetchall()
+              AND event_datetime IS NOT NULL AND event_datetime != ''
+        """) as cursor:
+            rows = await cursor.fetchall()
+
+    now = datetime.now()
+    today = now.date()
+    result = []
+
+    for row in rows:
+        (game_id, title, date, location, price, registration_link,
+         city, photo_id, created_at, event_datetime) = row
+
+        try:
+            event_dt = datetime.strptime(event_datetime, "%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            continue
+        if event_dt <= now:
+            continue  # игра уже началась/прошла
+
+        try:
+            # created_at пишеться через SQLite datetime('now') -> 'YYYY-MM-DD HH:MM:SS'
+            created_date = datetime.strptime(created_at[:19], "%Y-%m-%d %H:%M:%S").date()
+        except (ValueError, TypeError):
+            continue
+
+        registration_open_date = (event_dt - timedelta(days=days_before_event)).date()
+        # Якщо гру додали пізніше "штатної" дати відкриття реєстрації —
+        # нагадування шлеться в день додавання, а не заднім числом
+        target_date = max(registration_open_date, created_date)
+
+        if today >= target_date:
+            result.append((game_id, title, date, location, price, registration_link, city, photo_id))
+
+    return result
 
 
 async def mark_registration_notified(user_id: int, game_id: int) -> bool:
