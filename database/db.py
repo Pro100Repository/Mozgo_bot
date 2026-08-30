@@ -21,7 +21,8 @@ async def init_db():
                 registration_link TEXT DEFAULT '',
                 max_players INTEGER DEFAULT 0,
                 city TEXT DEFAULT '',
-                photo_id TEXT DEFAULT ''
+                photo_id TEXT DEFAULT '',
+                created_at TEXT
             )
         """)
 
@@ -125,6 +126,15 @@ async def migrate_db():
             await db.commit()
             print("✅ Миграция: добавлено поле price")
 
+        if "created_at" not in columns:
+            # Без DEFAULT — для старых игр (добавленных до этой миграции) поле
+            # останется NULL. Это осознанно: для таких игр невозможно понять,
+            # когда именно "открылась регистрация", поэтому напоминание
+            # "через 2 недели после регистрации" для них просто не сработает.
+            await db.execute("ALTER TABLE games ADD COLUMN created_at TEXT")
+            await db.commit()
+            print("✅ Миграция: добавлено поле created_at")
+
     # Одноразова міграція старого лога quiz_results у агреговану quiz_stats
     await migrate_quiz_results_to_stats()
 
@@ -156,11 +166,13 @@ async def add_game(title, date, location, registration_link="", max_players=0, c
     нужно для автоматического удаления завершившихся игр.
     Если не передано — берётся как None (игра не будет удаляться автоматически).
     photo_id — file_id фотографии в Telegram (не сама картинка, а её идентификатор).
+    created_at ставится автоматически (момент добавления игры в бота) — используется
+    для напоминания "через 2 недели после открытия регистрации".
     """
     async with aiosqlite.connect(DATABASE_NAME) as db:
         await db.execute(
-            "INSERT INTO games (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO games (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
             (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id)
         )
         await db.commit()
@@ -715,6 +727,27 @@ async def init_subscriptions_db():
                 UNIQUE(user_id, city)
             )
         """)
+
+        # Налаштування типу нагадувань користувача (мультивибір):
+        # '1d', '2d', '7d', 'reg14d' — див. NOTIFY_PREFS у handlers/subscription.py
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS notify_prefs (
+                user_id   INTEGER NOT NULL,
+                pref_code TEXT NOT NULL,
+                PRIMARY KEY (user_id, pref_code)
+            )
+        """)
+
+        # Дедуплікація: щоб нагадування "через 2 тижні після реєстрації"
+        # не надсилалось повторно щодня, поки гра не почалась
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS registration_notified (
+                user_id INTEGER NOT NULL,
+                game_id INTEGER NOT NULL,
+                PRIMARY KEY (user_id, game_id)
+            )
+        """)
+
         await db.commit()
 
 
@@ -805,6 +838,115 @@ async def get_games_for_broadcast(target_date: str) -> list:
             ORDER BY event_datetime
         """, (f"{target_date}%",)) as cursor:
             return await cursor.fetchall()
+
+
+# ─── НАЛАШТУВАННЯ ТИПУ НАГАДУВАНЬ (мультивибір) ──────────────────────────────
+
+async def get_user_notify_prefs(user_id: int) -> set:
+    """
+    Типи нагадувань, обрані користувачем ('1d','2d','7d','reg14d').
+    Якщо користувач ще жодного разу не відкривав це меню — матеріалізуємо
+    дефолт '1d' прямо в БД (щоб стан у базі завжди відповідав тому,
+    що бачить користувач на екрані).
+    """
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT pref_code FROM notify_prefs WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+        prefs = {r[0] for r in rows}
+
+        if not prefs:
+            await db.execute(
+                "INSERT OR IGNORE INTO notify_prefs (user_id, pref_code) VALUES (?, '1d')",
+                (user_id,)
+            )
+            await db.commit()
+            prefs = {"1d"}
+
+        return prefs
+
+
+async def toggle_notify_pref(user_id: int, pref_code: str) -> bool:
+    """Вмикає/вимикає конкретний тип нагадування. Повертає True якщо тепер увімкнено."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT 1 FROM notify_prefs WHERE user_id = ? AND pref_code = ?",
+            (user_id, pref_code)
+        ) as cursor:
+            exists = await cursor.fetchone()
+
+        if exists:
+            await db.execute(
+                "DELETE FROM notify_prefs WHERE user_id = ? AND pref_code = ?",
+                (user_id, pref_code)
+            )
+            await db.commit()
+            return False
+        else:
+            await db.execute(
+                "INSERT INTO notify_prefs (user_id, pref_code) VALUES (?, ?)",
+                (user_id, pref_code)
+            )
+            await db.commit()
+            return True
+
+
+async def get_subscribers_by_pref(city: str, pref_code: str) -> list:
+    """
+    user_id підписників міста, які обрали конкретний тип нагадування.
+    Для pref_code='1d' додатково враховує користувачів, які ще ЖОДНОГО РАЗУ
+    не відкривали меню налаштувань (немає жодного рядка в notify_prefs) —
+    для них '1d' діє як дефолт, щоб стара логіка підписки не зламалась.
+    """
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("""
+            SELECT s.user_id
+            FROM subscriptions s
+            WHERE s.city = ?
+              AND (
+                    EXISTS (SELECT 1 FROM notify_prefs p WHERE p.user_id = s.user_id AND p.pref_code = ?)
+                    OR (? = '1d' AND NOT EXISTS (SELECT 1 FROM notify_prefs p2 WHERE p2.user_id = s.user_id))
+              )
+        """, (city, pref_code, pref_code)) as cursor:
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+
+
+# ─── НАГАДУВАННЯ "ЧЕРЕЗ N ДНІВ ПІСЛЯ ВІДКРИТТЯ РЕЄСТРАЦІЇ" ────────────────────
+
+async def get_games_for_registration_reminder(days_after: int = 14) -> list:
+    """
+    Ігри, з моменту додавання (created_at) яких пройшло вже days_after днів,
+    і які ще не відбулися. Ігри без created_at (додані до міграції) не потрапляють
+    сюди — для них немає даних, коли саме "відкрилась реєстрація".
+    """
+    threshold = (datetime.now() - timedelta(days=days_after)).strftime("%Y-%m-%d %H:%M:%S")
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("""
+            SELECT id, title, date, location, price, registration_link, city, photo_id
+            FROM games
+            WHERE created_at IS NOT NULL AND created_at != ''
+              AND created_at <= ?
+              AND (event_datetime IS NULL OR event_datetime = '' OR event_datetime > ?)
+        """, (threshold, now_str)) as cursor:
+            return await cursor.fetchall()
+
+
+async def mark_registration_notified(user_id: int, game_id: int) -> bool:
+    """Позначає, що користувачу вже надіслано нагадування про реєстрацію по цій грі.
+    Повертає False якщо вже було надіслано раніше (щоб не дублювати)."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        try:
+            await db.execute(
+                "INSERT INTO registration_notified (user_id, game_id) VALUES (?, ?)",
+                (user_id, game_id)
+            )
+            await db.commit()
+            return True
+        except Exception:
+            return False
 
 
 # ─── МЕМ ДНЯ ─────────────────────────────────────────────────────────────────

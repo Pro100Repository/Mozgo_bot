@@ -4,7 +4,16 @@
 # ──────────────────────────────────────────────────────────────────
 BROADCAST_HOUR   = 9   # ← година розсилки ігор (за часом сервера -3 до мск)
 BROADCAST_MINUTE = 0    # ← хвилина розсилки ігор
-DAYS_BEFORE_GAME = 1    # ← за скільки днів до гри надсилати сповіщення
+
+# За скільки днів до гри надсилати нагадування — користувач сам обирає
+# один чи кілька варіантів у меню "🔔 Подписка на игры" -> "⏰ Настроить напоминания"
+DAYS_BEFORE_PREFS = {
+    "1d": 1,
+    "2d": 2,
+    "7d": 7,
+}
+
+REGISTRATION_REMINDER_DAYS = 14  # ← через скільки днів після додавання гри надсилати "reg14d"-нагадування
 
 MEME_WEEKDAY = 0        # ← день тижня для мема недели: 0 = Понедельник, 1 = Вторник, ... 6 = Воскресенье
 MEME_HOUR    = 9        # ← година відправки мему тижня
@@ -24,7 +33,9 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
 from config import ADMIN_IDS
 from database.db import (
-    get_games_for_broadcast, get_city_subscribers, remove_subscriber,
+    get_games_for_broadcast, remove_subscriber,
+    get_subscribers_by_pref, get_games_for_registration_reminder,
+    mark_registration_notified,
     get_next_meme, delete_meme, count_memes,
     get_meme_subscribers, remove_meme_subscriber,
     get_scheduler_state, set_scheduler_state
@@ -36,10 +47,11 @@ logger = logging.getLogger(__name__)
 async def send_game_notification(bot: Bot, user_id: int,
                                   title: str, date: str, location: str,
                                   price: str, registration_link: str,
-                                  city: str, photo_id: str):
+                                  city: str, photo_id: str, days_before: int = 1):
     """Надсилає одне сповіщення про гру конкретному користувачу"""
+    when_text = {1: "завтра", 2: "через 2 дня", 7: "через неделю"}.get(days_before, f"через {days_before} дн.")
     text = (
-        f"🔔 *Напоминание об игре завтра!*\n\n"
+        f"🔔 *Напоминание об игре {when_text}!*\n\n"
         f"🎯 {title}\n"
         f"📆 {date}\n"
         f"🏙 Город: {city}\n"
@@ -71,42 +83,97 @@ async def send_game_notification(bot: Bot, user_id: int,
 
 async def run_daily_broadcast(bot: Bot):
     """
-    Надсилає сповіщення про ігри які відбудуться через DAYS_BEFORE_GAME днів.
-    Викликається щодня о BROADCAST_HOUR:BROADCAST_MINUTE
+    Надсилає нагадування про ігри для КОЖНОГО обраного користувачами варіанту
+    ('за 1 день', 'за 2 дні', 'за тиждень') — окремо перевіряє ігри на кожну
+    з відповідних дат і бере підписників саме з цим типом нагадування.
+    Викликається щодня о BROADCAST_HOUR:BROADCAST_MINUTE.
     """
-    target_date = (datetime.now() + timedelta(days=DAYS_BEFORE_GAME)).strftime("%Y-%m-%d")
-    logger.info(f"[Scheduler] Запуск розсилки для ігор {target_date}")
-
-    games = await get_games_for_broadcast(target_date)
-
-    if not games:
-        logger.info(f"[Scheduler] Ігор на {target_date} немає — розсилка не потрібна")
-        return
-
     total_sent = 0
 
-    for game in games:
-        title, date, location, price, registration_link, city, photo_id = game
+    for pref_code, days in DAYS_BEFORE_PREFS.items():
+        target_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+        games = await get_games_for_broadcast(target_date)
 
-        subscribers = await get_city_subscribers(city)
-        if not subscribers:
-            logger.info(f"[Scheduler] Місто {city}: підписників немає")
+        if not games:
             continue
 
-        logger.info(f"[Scheduler] {city} / {title}: відправляємо {len(subscribers)} підписникам")
+        logger.info(f"[Scheduler] {pref_code}: игр на {target_date} — {len(games)}")
+
+        for game in games:
+            title, date, location, price, registration_link, city, photo_id = game
+
+            subscribers = await get_subscribers_by_pref(city, pref_code)
+            if not subscribers:
+                continue
+
+            logger.info(f"[Scheduler] {city} / {title} ({pref_code}): отправляем {len(subscribers)} подписчикам")
+
+            for user_id in subscribers:
+                sent = await send_game_notification(
+                    bot, user_id,
+                    title, date, location, price, registration_link, city, photo_id,
+                    days_before=days
+                )
+                if sent:
+                    total_sent += 1
+                await asyncio.sleep(0.05)
+
+    logger.info(f"[Scheduler] Розсилка ігор завершена. Надіслано: {total_sent}")
+
+    # Окремо — нагадування "через N днів після відкриття реєстрації"
+    try:
+        await run_registration_reminder(bot)
+    except Exception as e:
+        logger.error(f"[Scheduler] Помилка нагадування про реєстрацію: {e}")
+
+
+async def run_registration_reminder(bot: Bot):
+    """
+    Надсилає нагадування підписникам з типом 'reg14d', для ігор, з моменту
+    додавання яких пройшло REGISTRATION_REMINDER_DAYS днів. Кожному користувачу
+    по кожній грі — не більше одного разу (дедуплікація через registration_notified).
+    """
+    games = await get_games_for_registration_reminder(REGISTRATION_REMINDER_DAYS)
+    if not games:
+        return
+
+    sent = 0
+    for game in games:
+        game_id, title, date, location, price, registration_link, city, photo_id = game
+
+        subscribers = await get_subscribers_by_pref(city, "reg14d")
+        if not subscribers:
+            continue
+
+        text = (
+            f"📝 *Напоминание о регистрации!*\n\n"
+            f"Прошло {REGISTRATION_REMINDER_DAYS} дней с момента открытия регистрации на игру:\n\n"
+            f"🎯 {title}\n"
+            f"📆 {date}\n"
+            f"🏙 Город: {city}\n"
+        )
+        if registration_link:
+            text += f"📝 [Регистрация]({registration_link})\n"
 
         for user_id in subscribers:
-            sent = await send_game_notification(
-                bot, user_id,
-                title, date, location, price, registration_link, city, photo_id
-            )
-            if sent:
-                total_sent += 1
+            is_new = await mark_registration_notified(user_id, game_id)
+            if not is_new:
+                continue  # уже отправляли по этой игре этому пользователю
 
-            # Затримка між повідомленнями — 20 повідомлень/сек
+            try:
+                if photo_id:
+                    await bot.send_photo(user_id, photo=photo_id, caption=text, parse_mode="Markdown")
+                else:
+                    await bot.send_message(user_id, text, parse_mode="Markdown")
+                sent += 1
+            except TelegramForbiddenError:
+                await remove_subscriber(user_id)
+            except (TelegramBadRequest, Exception) as e:
+                logger.warning(f"[RegReminder] Не удалось отправить {user_id}: {e}")
+
             await asyncio.sleep(0.05)
 
-    logger.info(f"[Scheduler] Розсилка завершена. Надіслано: {total_sent}")
+    logger.info(f"[RegReminder] Нагадування про реєстрацію надіслано: {sent}")
 
 
 async def run_meme_broadcast(bot: Bot):
@@ -182,10 +249,11 @@ async def scheduler_loop(bot: Bot):
     Перевіряє час щохвилини.
     """
     WEEKDAY_NAMES = ["понедельник", "вторник", "среду", "четверг", "пятницу", "субботу", "воскресенье"]
+    days_list = ", ".join(f"{v} дн." for v in DAYS_BEFORE_PREFS.values())
     logger.info(
         f"[Scheduler] Запущено.\n"
         f"  Ігри: щодня о {BROADCAST_HOUR:02d}:{BROADCAST_MINUTE:02d}, "
-        f"за {DAYS_BEFORE_GAME} день до гри\n"
+        f"варіанти нагадувань: {days_list} до гри + reg{REGISTRATION_REMINDER_DAYS}d\n"
         f"  Мем недели: щотижня в {WEEKDAY_NAMES[MEME_WEEKDAY]} о {MEME_HOUR:02d}:{MEME_MINUTE:02d}"
     )
 

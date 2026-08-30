@@ -1,4 +1,4 @@
-# handlers/subscription.py — підписка на розсилку нових ігор по містах
+# handlers/subscription.py — підписка на розсилку нових ігор по містах + типи нагадувань
 
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -6,12 +6,32 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from config import SUBSCRIPTION_ADMIN_IDS
 from database.db import (
     RESULT_CITIES, subscribe, unsubscribe,
-    get_user_subscriptions
+    get_user_subscriptions, get_user_notify_prefs, toggle_notify_pref
 )
 
 router = Router()
 
-# ─── КЛАВІАТУРА З ЧЕКБОКСАМИ ─────────────────────────────────────────────────
+# ─── ТИПИ НАГАДУВАНЬ (мультивибір) ───────────────────────────────────────────
+# code -> підпис кнопки. Порядок тут визначає порядок кнопок у меню.
+NOTIFY_PREFS = [
+    ("1d",     "🔔 За 1 день до игры"),
+    ("2d",     "🔔 За 2 дня до игры"),
+    ("7d",     "🔔 За неделю до игры"),
+    ("reg14d", "📝 Через 2 недели после открытия регистрации"),
+]
+
+NOTIFY_PREFS_TEXT = (
+    "⏰ *Когда присылать напоминания об играх?*\n\n"
+    "Можно выбрать сразу несколько вариантов — нажимай на нужные 👇\n\n"
+    "ℹ️ *Про вариант «Через 2 недели после регистрации»:* игры добавляются "
+    "в бота примерно раз в месяц, поэтому по самым первым играм после "
+    "включения этой функции такое напоминание может не прийти — бот пока "
+    "не знает, когда именно открылась регистрация на них. Для игр, "
+    "добавленных позже, всё будет работать как надо."
+)
+
+
+# ─── КЛАВІАТУРА З ЧЕКБОКСАМИ (міста) ─────────────────────────────────────────
 
 async def subscription_kb(user_id: int) -> InlineKeyboardMarkup:
     """Кнопки міст з чекбоксами ✅/☐ залежно від підписки"""
@@ -24,9 +44,26 @@ async def subscription_kb(user_id: int) -> InlineKeyboardMarkup:
             callback_data=f"sub_toggle_{city}"
         )])
     buttons.append([InlineKeyboardButton(
+        text="⏰ Настроить напоминания",
+        callback_data="open_notify_prefs"
+    )])
+    buttons.append([InlineKeyboardButton(
         text="✔️ Готово",
         callback_data="sub_done"
     )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def notify_prefs_kb(selected: set) -> InlineKeyboardMarkup:
+    """Кнопки типів нагадувань з чекбоксами ✅/☐ (мультивибір)"""
+    buttons = []
+    for code, label in NOTIFY_PREFS:
+        icon = "✅" if code in selected else "☐"
+        buttons.append([InlineKeyboardButton(
+            text=f"{icon} {label}",
+            callback_data=f"np_toggle_{code}"
+        )])
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="np_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -70,7 +107,7 @@ async def _subscription_text(user_id: int) -> str:
     )
 
 
-# ─── ХЕНДЛЕРИ ────────────────────────────────────────────────────────────────
+# ─── ХЕНДЛЕРИ: ПІДПИСКА НА МІСТА ──────────────────────────────────────────────
 
 @router.message(F.text == "🔔 Подписка на игры")
 async def show_subscription(message: Message):
@@ -131,4 +168,45 @@ async def subscription_done(callback: CallbackQuery):
         )
 
     await callback.message.edit_text(text, parse_mode="Markdown")
+    await callback.answer()
+
+
+# ─── ХЕНДЛЕРИ: ТИП НАГАДУВАНЬ (мультивибір) ──────────────────────────────────
+
+@router.callback_query(F.data == "open_notify_prefs")
+async def open_notify_prefs(callback: CallbackQuery):
+    selected = await get_user_notify_prefs(callback.from_user.id)
+    await callback.message.edit_text(
+        NOTIFY_PREFS_TEXT,
+        reply_markup=notify_prefs_kb(selected),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("np_toggle_"))
+async def np_toggle(callback: CallbackQuery):
+    code = callback.data.replace("np_toggle_", "")
+    now_on = await toggle_notify_pref(callback.from_user.id, code)
+
+    selected = await get_user_notify_prefs(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=notify_prefs_kb(selected))
+
+    if code == "reg14d" and now_on:
+        await callback.answer(
+            "✅ Включено. Для игр, добавленных до включения этой опции, "
+            "напоминание может не сработать — см. пояснение выше.",
+            show_alert=True
+        )
+    else:
+        await callback.answer("✅ Включено" if now_on else "❌ Выключено")
+
+
+@router.callback_query(F.data == "np_back")
+async def np_back(callback: CallbackQuery):
+    await callback.message.edit_text(
+        await _subscription_text(callback.from_user.id),
+        reply_markup=await subscription_kb(callback.from_user.id),
+        parse_mode="Markdown"
+    )
     await callback.answer()
