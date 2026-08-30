@@ -274,7 +274,7 @@ async def ag_confirm(callback: CallbackQuery, state: FSMContext):
         f"✅ Игра *{data['title']}* добавлена!\n\n"
         f"🏙 Город: {data['city']}\n"
         f"📆 {display_date}\n\n"
-        f"🔔 Подписчики получат уведомление автоматически за день до игры в 12:00",
+        f"🔔 Подписчики получат уведомление автоматически в зависимости от их настройки подписки в 12:00",
         parse_mode="Markdown"
     )
 
