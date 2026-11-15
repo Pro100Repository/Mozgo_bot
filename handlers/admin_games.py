@@ -329,7 +329,7 @@ async def cmd_list_games(message: Message):
 
     text = "📋 Список игр (для админа):\n\n"
     for game in games:
-        game_id, title, date, location, registration_link, max_players, city = game[:7]
+        game_id, title, date, location, price, registration_link, max_players, city = game[:8]
         text += f"ID: {game_id} — {title} ({date}, {city})\n"
 
     text += "\nЧтобы удалить: /del_game ID"
