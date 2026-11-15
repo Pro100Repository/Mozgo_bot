@@ -35,9 +35,11 @@ def back_to_cities_keyboard():
     ]])
 
 
-def build_game_text(title, date, location, price, registration_link):
+def build_game_text(title, date, city, location, price, registration_link):
     text = f"🎯 {escape_html(title)}\n"
     text += f"📆 Дата: {escape_html(date)}\n"
+    if city:
+        text += f"🏙 Город: {escape_html(city)}\n"
     if location:
         text += f"📍 Место: {escape_html(location)}\n"
     if price:
@@ -45,7 +47,6 @@ def build_game_text(title, date, location, price, registration_link):
     if registration_link:
         text += f'📝 <a href="{registration_link}">Регистрация</a>\n'
     return text
-
 
 # ─── ПРЕДСТОЯЩИЕ ИГРЫ ───────────────────
 
@@ -92,12 +93,12 @@ async def city_chosen(callback: CallbackQuery):
     if games_without_photo:
         text = f"📅 Игры в городе «{city}»:\n\n"
         for title, date, location, price, registration_link, _ in games_without_photo:
-            text += build_game_text(title, date, location, price, registration_link) + "\n"
+            text += build_game_text(title, date, city, location, price, registration_link) + "\n"
         await callback.message.answer(text, parse_mode="HTML")
 
     # Ігри з фото — окремим повідомленням на кожну
     for title, date, location, price, registration_link, photo_id in games_with_photo:
-        caption = build_game_text(title, date, location, price, registration_link)
+        caption = build_game_text(title, date, city, location, price, registration_link)
         await callback.message.answer_photo(
             photo=photo_id,
             caption=caption,
