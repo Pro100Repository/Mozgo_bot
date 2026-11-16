@@ -1168,3 +1168,43 @@ async def add_venue(city: str, name: str) -> bool:
         )
         await db.commit()
         return cursor.rowcount > 0
+
+
+# ─── РЕДАКТИРОВАНИЕ ИГРЫ ─────────────────────────────────────────────────────
+
+# Поля, которые разрешено менять через update_game (защита от подстановки колонок)
+EDITABLE_GAME_FIELDS = {
+    "title", "date", "event_datetime", "city",
+    "location", "price", "registration_link", "photo_id",
+}
+
+
+async def get_game_full(game_id: int):
+    """Игра целиком в виде словаря или None, если не найдена"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT id, title, date, event_datetime, city, location, price, "
+            "registration_link, photo_id FROM games WHERE id = ?",
+            (game_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+    if not row:
+        return None
+    keys = ["id", "title", "date", "event_datetime", "city", "location",
+            "price", "registration_link", "photo_id"]
+    return {k: (v if v is not None else "") for k, v in zip(keys, row)}
+
+
+async def update_game(game_id: int, **fields) -> bool:
+    """Обновляет указанные поля игры. True — если игра найдена."""
+    fields = {k: v for k, v in fields.items() if k in EDITABLE_GAME_FIELDS}
+    if not fields:
+        return False
+    set_sql = ", ".join(f"{k} = ?" for k in fields)
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            f"UPDATE games SET {set_sql} WHERE id = ?",
+            (*fields.values(), game_id)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
