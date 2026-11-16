@@ -1122,3 +1122,49 @@ async def set_scheduler_state(key: str, value: str):
             ON CONFLICT(key) DO UPDATE SET value = excluded.value
         """, (key, value))
         await db.commit()
+
+
+# ─── МЕСТА ПРОВЕДЕНИЯ ИГР ────────────────────────────────────────────────────
+# Места проведения игр (по городам). Новые места, введённые админом
+# при добавлении игры, сохраняются сюда и затем появляются кнопками.
+
+async def init_venues_db():
+    """Создаёт таблицу мест проведения"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS venues (
+                id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT NOT NULL,
+                name TEXT NOT NULL,
+                UNIQUE(city, name)
+            )
+        """)
+        await db.commit()
+
+
+async def get_venues(city: str) -> list:
+    """Список мест города: [(id, name), ...]"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT id, name FROM venues WHERE city = ? ORDER BY name COLLATE NOCASE",
+            (city,)
+        ) as cursor:
+            return await cursor.fetchall()
+
+
+async def get_venue_name(venue_id: int):
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("SELECT name FROM venues WHERE id = ?", (venue_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+
+async def add_venue(city: str, name: str) -> bool:
+    """Добавляет место. True — если оно новое, False — если уже было."""
+    name = name.strip()
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO venues (city, name) VALUES (?, ?)", (city, name)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
