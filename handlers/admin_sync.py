@@ -11,7 +11,7 @@ from database.db import (
     add_game, add_venue,
     get_candidate, get_pending_candidates, set_candidate_status,
 )
-from game_sync import run_sync, candidate_text, strip_numbers, ensure_photo_id
+from game_sync import run_sync, candidate_text, strip_numbers
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -21,18 +21,8 @@ def is_admin(user_id: int) -> bool:
     return user_id in SYNC_ADMIN_IDS   # только те, кому приходят карточки
 
 
-async def _set_card_text(message: Message, text: str):
-    """Карточка может быть и фото (подпись), и обычным текстом.
-    Без reply_markup кнопки под карточкой исчезают."""
-    if message.photo:
-        await message.edit_caption(caption=text)
-    else:
-        await message.edit_text(text)
-
-
-async def _publish(bot: Bot, chat_id: int, c: dict):
+async def _publish(c: dict):
     """Добавляет игру в бота тем же способом, что и ручная форма /add_game"""
-    photo_id = await ensure_photo_id(bot, chat_id, c)
     await add_game(
         title             = strip_numbers(c["title"]),   # без номера выпуска
         date              = c["date"],
@@ -41,20 +31,19 @@ async def _publish(bot: Bot, chat_id: int, c: dict):
         price             = c["price"],
         city              = c["city"],
         event_datetime    = c["event_datetime"],
-        photo_id          = photo_id,
         external_id       = c["external_id"],
     )
     if c["location"]:
         await add_venue(c["city"], c["location"])   # место попадёт в кнопки /add_game
 
 
-async def _publish_claimed(bot: Bot, chat_id: int, c: dict) -> bool:
+async def _publish_claimed(c: dict) -> bool:
     """Сначала «занимаем» карточку (чтобы два админа не добавили игру дважды),
     затем добавляем. При ошибке возвращаем карточку в ожидание."""
     if not await set_candidate_status(c["id"], "added"):
         return False
     try:
-        await _publish(bot, chat_id, c)
+        await _publish(c)
     except Exception as e:
         logger.error(f"[Sync] Ошибка добавления игры {c['id']}: {e}")
         await set_candidate_status(c["id"], "pending", from_status="added")
@@ -82,7 +71,7 @@ async def sy_add(callback: CallbackQuery):
         await callback.answer("Игра не найдена", show_alert=True)
         return
     try:
-        ok = await _publish_claimed(callback.bot, callback.message.chat.id, c)
+        ok = await _publish_claimed(c)
     except Exception:
         await callback.answer("❌ Не удалось добавить, попробуй ещё раз", show_alert=True)
         return
@@ -90,7 +79,7 @@ async def sy_add(callback: CallbackQuery):
         await callback.message.edit_reply_markup(reply_markup=None)
         await callback.answer("Уже обработано", show_alert=True)
         return
-    await _set_card_text(callback.message, candidate_text(c) + "\n\n✅ Добавлено в бота")
+    await callback.message.edit_text(candidate_text(c) + "\n\n✅ Добавлено в бота")
     await callback.answer("✅ Добавлено")
 
 
@@ -107,7 +96,7 @@ async def sy_skip(callback: CallbackQuery):
         await callback.message.edit_reply_markup(reply_markup=None)
         await callback.answer("Уже обработано", show_alert=True)
         return
-    await _set_card_text(callback.message, candidate_text(c) + "\n\n❌ Пропущено")
+    await callback.message.edit_text(candidate_text(c) + "\n\n❌ Пропущено")
     await callback.answer("Пропущено")
 
 
@@ -119,7 +108,7 @@ async def sy_add_all(callback: CallbackQuery):
     added = failed = 0
     for c in await get_pending_candidates():
         try:
-            if await _publish_claimed(callback.bot, callback.message.chat.id, c):
+            if await _publish_claimed(c):
                 added += 1
         except Exception:
             failed += 1
