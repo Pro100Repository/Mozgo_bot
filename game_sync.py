@@ -60,8 +60,8 @@ def _clean(text) -> str:
 
 def make_title(game_name: str) -> str:
     """'Мозгобойня - Классическая 26 - Классическая #224 (Тема)' ->
-    'Мозгобойня — Классическая #224 (Тема)';
-    'Туц Туц Quiz - Классическая - Туц Туц QUIZ #121' -> 'Туц Туц QUIZ #121'."""
+    'Мозгобойня — Классическая (Тема)';
+    'Туц Туц Quiz - Классическая - Туц Туц QUIZ #121' -> 'Туц Туц QUIZ'."""
     name = _clean(game_name)
     parts = [p.strip() for p in name.split(" - ") if p.strip()]
     if len(parts) < 2:
