@@ -190,14 +190,46 @@ def candidate_kb(c: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _download(url: str) -> bytes:
+    import aiohttp
+    timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; RudaGamesTelegramBot/1.0)"}
+    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        async with session.get(url) as resp:
+            resp.raise_for_status()
+            data = await resp.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise ValueError("файл больше 10 МБ")
+    return data
+
+
+async def _send_photo(bot: Bot, chat_id: int, photo: str, **kwargs):
+    """Сначала отдаёт Telegram ссылку (или file_id). Если Telegram не смог
+    загрузить картинку по ссылке (сайт блокирует его серверы, нестандартный
+    ответ и т.п.) — бот скачивает файл сам и загружает как файл."""
+    try:
+        return await bot.send_photo(chat_id, photo=photo, **kwargs)
+    except Exception as first_error:
+        if not str(photo).startswith("http"):
+            raise
+        logger.warning(
+            f"[Sync] Telegram не смог загрузить афишу {photo}: {first_error}. "
+            "Скачиваю файл сам…"
+        )
+        from aiogram.types import BufferedInputFile
+        data = await _download(photo)
+        name = photo.rsplit("/", 1)[-1] or "poster.png"
+        return await bot.send_photo(chat_id, photo=BufferedInputFile(data, filename=name), **kwargs)
+
+
 async def _send_card(bot: Bot, chat_id: int, c: dict):
     """Карточка игры: с афишей, если она есть и Telegram смог её загрузить,
     иначе обычным текстом. file_id афиши запоминается и используется повторно."""
     photo = c.get("photo_id") or c.get("photo_url")
     if photo:
         try:
-            msg = await bot.send_photo(
-                chat_id, photo=photo,
+            msg = await _send_photo(
+                bot, chat_id, photo,
                 caption=candidate_text(c), reply_markup=candidate_kb(c)
             )
             if not c.get("photo_id") and msg.photo:
@@ -205,7 +237,7 @@ async def _send_card(bot: Bot, chat_id: int, c: dict):
                 await set_candidate_photo_id(c["id"], c["photo_id"])
             return
         except Exception as e:
-            logger.warning(f"[Sync] Не удалось отправить афишу {photo}: {e}")
+            logger.warning(f"[Sync] Не удалось отправить афишу {photo} даже после скачивания: {e}")
     await bot.send_message(chat_id, candidate_text(c), reply_markup=candidate_kb(c))
 
 
@@ -218,7 +250,7 @@ async def ensure_photo_id(bot: Bot, chat_id: int, c: dict) -> str:
     if not url:
         return ""
     try:
-        msg = await bot.send_photo(chat_id, photo=url)
+        msg = await _send_photo(bot, chat_id, url)
         file_id = msg.photo[-1].file_id
         try:
             await bot.delete_message(chat_id, msg.message_id)
