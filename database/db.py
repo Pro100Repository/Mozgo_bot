@@ -1217,7 +1217,8 @@ async def update_game(game_id: int, **fields) -> bool:
 # games.external_id — uuid игры на сайте (защита от дублей).
 
 _CAND_COLS = ("id", "external_id", "city", "title", "date", "event_datetime",
-              "location", "price", "registration_link", "note", "status")
+              "location", "price", "registration_link", "note", "status",
+              "photo_url", "photo_id")
 
 
 async def init_sync_db():
@@ -1241,9 +1242,18 @@ async def init_sync_db():
                 registration_link TEXT DEFAULT '',
                 note              TEXT DEFAULT '',
                 status            TEXT NOT NULL DEFAULT 'pending',
-                created_at        TEXT DEFAULT (datetime('now'))
+                created_at        TEXT DEFAULT (datetime('now')),
+                photo_url         TEXT DEFAULT '',
+                photo_id          TEXT DEFAULT ''
             )
         """)
+
+        # Миграция для баз, где таблица была создана до появления фото
+        async with db.execute("PRAGMA table_info(game_candidates)") as cursor:
+            cand_columns = [row[1] for row in await cursor.fetchall()]
+        for col in ("photo_url", "photo_id"):
+            if col not in cand_columns:
+                await db.execute(f"ALTER TABLE game_candidates ADD COLUMN {col} TEXT DEFAULT ''")
         await db.commit()
 
 
@@ -1284,10 +1294,11 @@ async def add_candidate(c: dict):
     async with aiosqlite.connect(DATABASE_NAME) as db:
         cursor = await db.execute(
             "INSERT OR IGNORE INTO game_candidates "
-            "(external_id, city, title, date, event_datetime, location, price, registration_link, note) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(external_id, city, title, date, event_datetime, location, price, registration_link, note, photo_url) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (c["external_id"], c["city"], c["title"], c["date"], c["event_datetime"],
-             c.get("location", ""), c.get("price", ""), c.get("registration_link", ""), c.get("note", ""))
+             c.get("location", ""), c.get("price", ""), c.get("registration_link", ""), c.get("note", ""),
+             c.get("photo_url", ""))
         )
         await db.commit()
         return cursor.lastrowid if cursor.rowcount > 0 else None
@@ -1322,6 +1333,26 @@ async def set_candidate_status(candidate_id: int, new_status: str, from_status: 
         )
         await db.commit()
         return cursor.rowcount > 0
+
+
+async def set_candidate_photo_id(candidate_id: int, photo_id: str):
+    """Запоминает Telegram file_id афиши, чтобы не скачивать картинку с сайта повторно"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute(
+            "UPDATE game_candidates SET photo_id = ? WHERE id = ?", (photo_id, candidate_id)
+        )
+        await db.commit()
+
+
+async def fill_candidate_photo_url(external_id: str, url: str):
+    """Дописывает ссылку на афишу ожидающим играм, найденным до появления импорта фото"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute(
+            "UPDATE game_candidates SET photo_url = ? "
+            "WHERE external_id = ? AND status = 'pending' AND (photo_url IS NULL OR photo_url = '')",
+            (url, external_id)
+        )
+        await db.commit()
 
 
 async def prune_candidates():

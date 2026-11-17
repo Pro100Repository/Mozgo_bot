@@ -25,6 +25,7 @@ PLACE_FILTERS = {
 }
 
 SKIP_CORPORATE  = True   # не предлагать корпоративные игры
+IMPORT_PHOTOS   = True   # брать афишу игры (media_banner) с сайта; False — без фото
 REQUEST_TIMEOUT = 20     # секунд на один запрос к сайту
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ from config import SYNC_ADMIN_IDS
 from database.db import (
     external_id_known, find_similar_game, add_candidate,
     get_pending_candidates, prune_candidates,
+    set_candidate_photo_id, fill_candidate_photo_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,6 +117,13 @@ def parse_event(raw: dict, city: str):
         f"&uuid={uuid}&reg_type=registration&isCorporateGame=false"
     ) if city_slug else ""
 
+    photo_url = ""
+    if IMPORT_PHOTOS:
+        banner = raw.get("media_banner")
+        url = banner.get("head") if isinstance(banner, dict) else ""
+        if isinstance(url, str) and url.startswith("https://"):
+            photo_url = url
+
     notes = []
     if raw.get("is_full"):
         notes.append("⚠️ На сайте мест уже нет")
@@ -136,6 +145,7 @@ def parse_event(raw: dict, city: str):
         "price":             format_price(raw.get("price"), raw.get("currency")),
         "registration_link": link,
         "note":              "\n".join(notes),
+        "photo_url":         photo_url,
     }
 
 
@@ -180,6 +190,47 @@ def candidate_kb(c: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _send_card(bot: Bot, chat_id: int, c: dict):
+    """Карточка игры: с афишей, если она есть и Telegram смог её загрузить,
+    иначе обычным текстом. file_id афиши запоминается и используется повторно."""
+    photo = c.get("photo_id") or c.get("photo_url")
+    if photo:
+        try:
+            msg = await bot.send_photo(
+                chat_id, photo=photo,
+                caption=candidate_text(c), reply_markup=candidate_kb(c)
+            )
+            if not c.get("photo_id") and msg.photo:
+                c["photo_id"] = msg.photo[-1].file_id
+                await set_candidate_photo_id(c["id"], c["photo_id"])
+            return
+        except Exception as e:
+            logger.warning(f"[Sync] Не удалось отправить афишу {photo}: {e}")
+    await bot.send_message(chat_id, candidate_text(c), reply_markup=candidate_kb(c))
+
+
+async def ensure_photo_id(bot: Bot, chat_id: int, c: dict) -> str:
+    """Возвращает file_id афиши для сохранения в игре. Если его ещё нет —
+    получает через временную отправку фото (она сразу удаляется)."""
+    if c.get("photo_id"):
+        return c["photo_id"]
+    url = c.get("photo_url")
+    if not url:
+        return ""
+    try:
+        msg = await bot.send_photo(chat_id, photo=url)
+        file_id = msg.photo[-1].file_id
+        try:
+            await bot.delete_message(chat_id, msg.message_id)
+        except Exception:
+            pass
+        await set_candidate_photo_id(c["id"], file_id)
+        return file_id
+    except Exception as e:
+        logger.warning(f"[Sync] Не удалось получить афишу {url}: {e}")
+        return ""
+
+
 async def send_candidates(bot: Bot, candidates: list):
     """Отправляет всем админам карточки (и кнопки «все сразу», если игр больше одной)"""
     if not candidates:
@@ -197,7 +248,7 @@ async def send_candidates(bot: Bot, candidates: list):
                     ]])
                 )
             for c in candidates:
-                await bot.send_message(admin_id, candidate_text(c), reply_markup=candidate_kb(c))
+                await _send_card(bot, admin_id, c)
                 await asyncio.sleep(0.1)
         except Exception as e:
             logger.warning(f"[Sync] Не удалось отправить карточки админу {admin_id}: {e}")
@@ -260,6 +311,8 @@ async def run_sync(bot: Bot, manual: bool = False) -> str:
                 seen += 1
 
                 if await external_id_known(ev["external_id"]):
+                    if ev["photo_url"]:   # ожидающим играм без афиши дописываем её
+                        await fill_candidate_photo_url(ev["external_id"], ev["photo_url"])
                     continue
                 if await find_similar_game(city, ev["event_datetime"], ev["location"]):
                     continue   # такая игра уже есть (например, добавлена вручную)
