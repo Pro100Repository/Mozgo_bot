@@ -12,9 +12,9 @@ SITE_BASE = "https://rudagames.com"
 # None = ID пока не задан, город пропускается.
 CITY_IDS = {
     "Красногорск":           198,
-    "Москва «бар Liberty»":  14,   # ← впиши ID Москвы
+    "Москва «бар Liberty»":  None,   # ← впиши ID Москвы
     "Истра":                 None,   # ← впиши ID Истры
-    "Обнинск":               219,   # ← впиши ID Обнинска
+    "Обнинск":               None,   # ← впиши ID Обнинска
 }
 
 # Если для города указан фильтр — берутся только игры, в названии заведения
@@ -58,11 +58,18 @@ def _clean(text) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def strip_numbers(title: str) -> str:
+    """Убирает номера выпусков: 'Квизмашина — Нулевые #3' -> 'Квизмашина — Нулевые'.
+    Метки вроде '#Легкая' (не число) остаются."""
+    title = re.sub(r"\s*#\d+\b", "", title or "")
+    return re.sub(r"\s+", " ", title).strip()
+
+
 def make_title(game_name: str) -> str:
     """'Мозгобойня - Классическая 26 - Классическая #224 (Тема)' ->
     'Мозгобойня — Классическая (Тема)';
     'Туц Туц Quiz - Классическая - Туц Туц QUIZ #121' -> 'Туц Туц QUIZ'."""
-    name = _clean(game_name)
+    name = strip_numbers(_clean(game_name))
     parts = [p.strip() for p in name.split(" - ") if p.strip()]
     if len(parts) < 2:
         return name
@@ -151,7 +158,7 @@ async def fetch_city_events(city_id: int) -> list:
 
 def candidate_text(c: dict) -> str:
     lines = ["🆕 Новая игра на сайте", "",
-             f"🎯 {c['title']}",
+             f"🎯 {strip_numbers(c['title'])}",
              f"📆 {c['date']}",
              f"🏙 {c['city']}"]
     if c.get("location"):

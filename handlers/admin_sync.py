@@ -11,7 +11,7 @@ from database.db import (
     add_game, add_venue,
     get_candidate, get_pending_candidates, set_candidate_status,
 )
-from game_sync import run_sync, candidate_text
+from game_sync import run_sync, candidate_text, strip_numbers
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -24,7 +24,7 @@ def is_admin(user_id: int) -> bool:
 async def _publish(c: dict):
     """Добавляет игру в бота тем же способом, что и ручная форма /add_game"""
     await add_game(
-        title             = c["title"],
+        title             = strip_numbers(c["title"]),   # без номера выпуска
         date              = c["date"],
         location          = c["location"],
         registration_link = c["registration_link"],
