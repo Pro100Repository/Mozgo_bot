@@ -4,8 +4,8 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
-from handlers import faq, games, start, admin, admin_games, rating, contacts, quiz, admin_quiz, admin_results, results, rules, subscription, meme, admin_meme, admin_broadcast
-from database.db import init_db, migrate_db, cleanup_finished_games, init_results_db, init_subscriptions_db, init_meme_db, init_scheduler_db, init_venues_db
+from handlers import faq, games, start, admin, admin_games, rating, contacts, quiz, admin_quiz, admin_results, results, rules, subscription, meme, admin_meme, admin_broadcast, admin_sync
+from database.db import init_db, migrate_db, cleanup_finished_games, init_results_db, init_subscriptions_db, init_meme_db, init_scheduler_db, init_venues_db, init_sync_db
 from scheduler import scheduler_loop
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +31,7 @@ async def main():
     await init_meme_db()
     await init_scheduler_db()
     await init_venues_db()
+    await init_sync_db()
 
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
@@ -50,6 +51,7 @@ async def main():
     dp.include_router(admin_meme.router)
     dp.include_router(admin_quiz.router)
     dp.include_router(admin_broadcast.router)
+    dp.include_router(admin_sync.router)
     dp.include_router(admin.router)
 
     # Запускаем фоновую очистку завершённых игр параллельно с ботом

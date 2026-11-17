@@ -28,6 +28,14 @@ MEME_MINUTE  = 0        # ← хвилина відправки мему тиж�
                         #    наприклад MEME_HOUR=10 щоб мем о 10:00, ігри о 12:00)
 
 MEME_LOW_THRESHOLD = 2  # ← при якій кількості мемів надсилати попередження адміну
+
+# Синхронізація розкладу з сайтом rudagames.com (див. game_sync.py).
+# Бот шле адмінам лише НОВІ ігри, тому щоденна перевірка не створює спаму.
+# На сайті ігри з'являються поступово (реєстрація відкривається приблизно за 2 тижні),
+# тому перевіряти раз на місяць замало — нові ігри приходили б із запізненням.
+SYNC_HOUR   = 10
+SYNC_MINUTE = 0
+SYNC_MONTH_DAYS = None  # ← None = щодня; або список днів місяця, напр. [2, 10, 18, 25]
 # ──────────────────────────────────────────────────────────────────
 
 import asyncio
@@ -38,6 +46,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
 from config import ADMIN_IDS
+from game_sync import run_sync
 from database.db import (
     get_games_for_broadcast, remove_subscriber,
     get_subscribers_by_pref, get_games_for_registration_reminder,
@@ -262,6 +271,7 @@ async def scheduler_loop(bot: Bot):
     last_game_run = await _load_last_run_date("last_game_broadcast")
     last_reg_run  = await _load_last_run_date("last_reg_reminder")
     last_meme_run = await _load_last_run_date("last_meme_broadcast")
+    last_sync_run = await _load_last_run_date("last_game_sync")
 
     while True:
         now = datetime.now()
@@ -289,6 +299,18 @@ async def scheduler_loop(bot: Bot):
                 await run_registration_reminder(bot)
             except Exception as e:
                 logger.error(f"[Scheduler] Помилка нагадування про реєстрацію: {e}")
+
+        # ─── Синхронізація розкладу з сайтом ────────────────────
+        sync_time = SYNC_HOUR * 60 + SYNC_MINUTE
+        if (now_time >= sync_time
+                and now.date() != last_sync_run
+                and (SYNC_MONTH_DAYS is None or now.day in SYNC_MONTH_DAYS)):
+            last_sync_run = now.date()
+            await set_scheduler_state("last_game_sync", last_sync_run.isoformat())
+            try:
+                await run_sync(bot, manual=False)
+            except Exception as e:
+                logger.error(f"[Scheduler] Помилка синхронізації з сайтом: {e}")
 
         # ─── Мем недели ──────────────────────────────────────────
         meme_time = MEME_HOUR * 60 + MEME_MINUTE

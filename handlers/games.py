@@ -45,7 +45,7 @@ def build_game_text(title, date, city, location, price, registration_link):
     if price:
         text += f"💰 Цена: {escape_html(price)}\n"
     if registration_link:
-        text += f'📝 <a href="{registration_link}">Регистрация</a>\n'
+        text += f'📝 <a href="{escape_html(registration_link).replace(chr(34), "&quot;")}">Регистрация</a>\n'
     return text
 
 # ─── ПРЕДСТОЯЩИЕ ИГРЫ ───────────────────

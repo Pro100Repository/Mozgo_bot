@@ -28,5 +28,10 @@ if not SUBSCRIPTION_ADMIN_IDS:
         "подписках отправляться не будут. Добавь строку SUBSCRIPTION_ADMIN_IDS=id1,id2 в .env"
     )
 
+# ID админов, которым приходят карточки новых игр с сайта (/sync_games и автопроверка).
+# Через запятую. Если не задано — карточки получают все ADMIN_IDS.
+_sync_admin_raw = os.getenv("SYNC_ADMIN_IDS", "")
+SYNC_ADMIN_IDS = [int(x.strip()) for x in _sync_admin_raw.split(",") if x.strip()] or ADMIN_IDS
+
 # Назва файлу бази даних
 DATABASE_NAME = "quiz_bot.db"

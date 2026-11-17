@@ -160,7 +160,7 @@ async def get_game_by_id(game_id: int):
             return await cursor.fetchone()
 
 
-async def add_game(title, date, location, registration_link="", max_players=0, city="", event_datetime=None, photo_id="", price=""):
+async def add_game(title, date, location, registration_link="", max_players=0, city="", event_datetime=None, photo_id="", price="", external_id=None):
     """
     event_datetime — дата и время начала игры в формате ISO ("2026-06-25 20:00"),
     нужно для автоматического удаления завершившихся игр.
@@ -170,12 +170,13 @@ async def add_game(title, date, location, registration_link="", max_players=0, c
     для напоминания "через 2 недели после открытия регистрации".
     """
     async with aiosqlite.connect(DATABASE_NAME) as db:
-        await db.execute(
-            "INSERT INTO games (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-            (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id)
+        cursor = await db.execute(
+            "INSERT INTO games (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id, created_at, external_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)",
+            (title, date, location, price, registration_link, max_players, city, event_datetime, photo_id, external_id)
         )
         await db.commit()
+        return cursor.lastrowid
 
 
 def parse_game_datetime(date_str: str, time_str: str):
@@ -1208,3 +1209,125 @@ async def update_game(game_id: int, **fields) -> bool:
         )
         await db.commit()
         return cursor.rowcount > 0
+
+
+# ─── СИНХРОНИЗАЦИЯ ИГР С САЙТОМ ──────────────────────────────────────────────
+# game_candidates — игры, найденные на сайте и ожидающие решения админа
+# (status: pending — ждёт, added — добавлена в бота, skipped — админ пропустил).
+# games.external_id — uuid игры на сайте (защита от дублей).
+
+_CAND_COLS = ("id", "external_id", "city", "title", "date", "event_datetime",
+              "location", "price", "registration_link", "note", "status")
+
+
+async def init_sync_db():
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute("PRAGMA table_info(games)") as cursor:
+            columns = [row[1] for row in await cursor.fetchall()]
+        if "external_id" not in columns:
+            await db.execute("ALTER TABLE games ADD COLUMN external_id TEXT")
+            print("✅ Миграция: добавлено поле external_id")
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS game_candidates (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                external_id       TEXT NOT NULL UNIQUE,
+                city              TEXT NOT NULL,
+                title             TEXT NOT NULL,
+                date              TEXT NOT NULL,
+                event_datetime    TEXT NOT NULL,
+                location          TEXT DEFAULT '',
+                price             TEXT DEFAULT '',
+                registration_link TEXT DEFAULT '',
+                note              TEXT DEFAULT '',
+                status            TEXT NOT NULL DEFAULT 'pending',
+                created_at        TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        await db.commit()
+
+
+async def external_id_known(external_id: str) -> bool:
+    """Эта игра уже добавлена в бота или уже предлагалась админу?"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT 1 FROM games WHERE external_id = ? LIMIT 1", (external_id,)
+        ) as cursor:
+            if await cursor.fetchone():
+                return True
+        async with db.execute(
+            "SELECT 1 FROM game_candidates WHERE external_id = ? LIMIT 1", (external_id,)
+        ) as cursor:
+            return bool(await cursor.fetchone())
+
+
+async def find_similar_game(city: str, event_datetime: str, location: str) -> bool:
+    """Есть ли уже игра (например, добавленная вручную) в том же городе
+    в то же время и в том же месте. Названия мест сравниваются мягко."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            "SELECT location FROM games WHERE city = ? AND event_datetime = ?",
+            (city, event_datetime)
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    loc = (location or "").strip().lower()
+    for (existing,) in rows:
+        ex = (existing or "").strip().lower()
+        if not ex or not loc or ex in loc or loc in ex:
+            return True
+    return False
+
+
+async def add_candidate(c: dict):
+    """Сохраняет найденную игру. Возвращает id или None, если такая уже есть."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO game_candidates "
+            "(external_id, city, title, date, event_datetime, location, price, registration_link, note) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (c["external_id"], c["city"], c["title"], c["date"], c["event_datetime"],
+             c.get("location", ""), c.get("price", ""), c.get("registration_link", ""), c.get("note", ""))
+        )
+        await db.commit()
+        return cursor.lastrowid if cursor.rowcount > 0 else None
+
+
+async def get_candidate(candidate_id: int):
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            f"SELECT {', '.join(_CAND_COLS)} FROM game_candidates WHERE id = ?", (candidate_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(zip(_CAND_COLS, row)) if row else None
+
+
+async def get_pending_candidates() -> list:
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute(
+            f"SELECT {', '.join(_CAND_COLS)} FROM game_candidates "
+            "WHERE status = 'pending' ORDER BY event_datetime"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(zip(_CAND_COLS, r)) for r in rows]
+
+
+async def set_candidate_status(candidate_id: int, new_status: str, from_status: str = "pending") -> bool:
+    """Атомарно меняет статус. False — если статус уже был изменён
+    (например, другой админ успел нажать кнопку раньше)."""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        cursor = await db.execute(
+            "UPDATE game_candidates SET status = ? WHERE id = ? AND status = ?",
+            (new_status, candidate_id, from_status)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def prune_candidates():
+    """Удаляет записи об играх, которые давно прошли (чтобы таблица не росла)"""
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute(
+            "DELETE FROM game_candidates WHERE event_datetime < datetime('now', '-1 day')"
+        )
+        await db.commit()
